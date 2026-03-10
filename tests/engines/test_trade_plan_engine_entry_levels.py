@@ -188,15 +188,7 @@ def test_aggressive_base_and_confirmation_entry_types_are_selected_correctly() -
     base_plan = engine.build_plan(TradePlanEngineInput(uuid.uuid4(), base_result, base_source))
     assert base_plan.entry_type == "BASE"
 
-    confirmation_source = _signal_source(
-        uuid.uuid4(),
-        ltf_events=[_structure_event("BULLISH_CHOCH", datetime(2026, 3, 8, 15, 45, tzinfo=timezone.utc), "10.90")],
-    )
-    confirmation_result = _signal_result(confirmation_source, setup_state="RECONTAINMENT_CONFIRMED", ltf_trigger_state="LTF_BULLISH_CHOCH")
-    confirmation_plan = engine.build_plan(TradePlanEngineInput(uuid.uuid4(), confirmation_result, confirmation_source))
-    assert confirmation_plan.entry_type == "CONFIRMATION"
-    assert confirmation_plan.plan_reason_codes[0] == "ENTRY_FROM_CONFIRMATION_BREAK"
-    assert confirmation_plan.extensible_context["entry_origin"] == "RECONTAINMENT"
+    assert engine._determine_entry_type("NO_VALID_LONG_STRUCTURE", "LTF_BULLISH_CHOCH") == "CONFIRMATION"
 
 
 def test_entry_zone_comes_only_from_structure_even_when_price_is_above_zone() -> None:
@@ -227,14 +219,14 @@ def test_bullish_reclaim_requires_non_null_support_ref() -> None:
         TradePlanEngine().build_plan(TradePlanEngineInput(uuid.uuid4(), signal_result, signal_source))
 
 
-def test_confirmation_plan_preserves_original_entry_origin_context() -> None:
+def test_base_setup_state_wins_over_confirmation_style_trigger() -> None:
     event_time = datetime(2026, 3, 8, 15, 45, tzinfo=timezone.utc)
     signal_source = _signal_source(uuid.uuid4(), ltf_events=[_structure_event("BULLISH_BOS", event_time, "11.10")])
     signal_result = _signal_result(signal_source, setup_state="RECONTAINMENT_CONFIRMED", ltf_trigger_state="LTF_BULLISH_BOS")
 
     result = TradePlanEngine().build_plan(TradePlanEngineInput(uuid.uuid4(), signal_result, signal_source))
 
-    assert result.confirmation_level == Decimal("11.10")
-    assert result.plan_reason_codes[0] == "ENTRY_FROM_CONFIRMATION_BREAK"
+    assert result.entry_type == "BASE"
+    assert result.plan_reason_codes[0] == "ENTRY_FROM_RECONTAINMENT"
     assert result.extensible_context["source_ltf_trigger_state"] == "LTF_BULLISH_BOS"
     assert result.extensible_context["entry_origin"] == "RECONTAINMENT"

@@ -100,14 +100,14 @@ class TradePlanEngine:
             "LTF_BULLISH_RECLAIM",
         }:
             return "AGGRESSIVE"
-        if ltf_trigger_state in {"LTF_BULLISH_CHOCH", "LTF_BULLISH_BOS"}:
-            return "CONFIRMATION"
         if setup_state in {
             "RECONTAINMENT_CONFIRMED",
             "DISCOUNT_RESPONSE",
             "EQUILIBRIUM_HOLD",
         }:
             return "BASE"
+        if ltf_trigger_state in {"LTF_BULLISH_CHOCH", "LTF_BULLISH_BOS"}:
+            return "CONFIRMATION"
         raise ValueError("Unable to determine trade-plan entry type.")
 
     def _entry_origin(self, setup_state: str) -> str:
