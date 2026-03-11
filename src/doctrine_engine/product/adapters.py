@@ -70,6 +70,10 @@ from doctrine_engine.runner.models import (
     UniverseSymbolContext,
 )
 
+
+def _timeframe_db_value(timeframe: Timeframe) -> str:
+    return timeframe.value
+
 ALERT_BENCHMARKS = ("SPY", "QQQ", "IWM")
 SECTOR_ETF_MAP = {
     "Technology": "XLK",
@@ -187,7 +191,7 @@ class DbMarketDataLoader(MarketDataLoader):
     def _load_latest_bar(session: Session, symbol_id: uuid.UUID, timeframe: Timeframe) -> EngineBar | None:
         row = session.scalar(
             select(Bar)
-            .where(Bar.symbol_id == symbol_id, Bar.timeframe == timeframe)
+            .where(Bar.symbol_id == symbol_id, Bar.timeframe == _timeframe_db_value(timeframe))
             .order_by(desc(Bar.bar_timestamp))
             .limit(1)
         )
@@ -517,12 +521,12 @@ def _load_frame_context(
     structure_rows = list(
         session.scalars(
             select(Feature)
-            .where(
-                Feature.symbol_id == symbol_id,
-                Feature.timeframe == timeframe,
-                Feature.feature_set == FEATURE_SET_STRUCTURE,
-                Feature.feature_version == FEATURE_VERSION_V1,
-            )
+                .where(
+                    Feature.symbol_id == symbol_id,
+                    Feature.timeframe == _timeframe_db_value(timeframe),
+                    Feature.feature_set == FEATURE_SET_STRUCTURE,
+                    Feature.feature_version == FEATURE_VERSION_V1,
+                )
             .order_by(desc(Feature.bar_timestamp))
             .limit(history_window_bars)
         ).all()
@@ -534,7 +538,7 @@ def _load_frame_context(
     zone_row = session.scalar(
         select(Feature).where(
             Feature.symbol_id == symbol_id,
-            Feature.timeframe == timeframe,
+            Feature.timeframe == _timeframe_db_value(timeframe),
             Feature.feature_set == FEATURE_SET_ZONE,
             Feature.feature_version == FEATURE_VERSION_V1,
             Feature.bar_timestamp == latest_bar_timestamp,
@@ -543,7 +547,7 @@ def _load_frame_context(
     pattern_row = session.scalar(
         select(Feature).where(
             Feature.symbol_id == symbol_id,
-            Feature.timeframe == timeframe,
+            Feature.timeframe == _timeframe_db_value(timeframe),
             Feature.feature_set == FEATURE_SET_PATTERN,
             Feature.feature_version == FEATURE_VERSION_V1,
             Feature.bar_timestamp == latest_bar_timestamp,
@@ -564,7 +568,7 @@ def _load_recent_bars(session: Session, symbol_id: uuid.UUID, timeframe: Timefra
     rows = list(
         session.scalars(
             select(Bar)
-            .where(Bar.symbol_id == symbol_id, Bar.timeframe == timeframe)
+            .where(Bar.symbol_id == symbol_id, Bar.timeframe == _timeframe_db_value(timeframe))
             .order_by(desc(Bar.bar_timestamp))
             .limit(limit)
         ).all()

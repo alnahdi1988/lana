@@ -73,9 +73,10 @@ class PolygonSyncService:
         errors: list[str] = []
         with self.session_factory() as session:
             snapshot = self._refresh_universe(session=session, runner_config=runner_config, errors=errors)
+            snapshot_id = snapshot.id
             session.commit()
 
-        tickers_to_sync = self._tickers_for_run(snapshot_id=snapshot.id, runner_config=runner_config)
+        tickers_to_sync = self._tickers_for_run(snapshot_id=snapshot_id, runner_config=runner_config)
         for ticker in tickers_to_sync:
             try:
                 with self.session_factory() as session:
@@ -85,7 +86,7 @@ class PolygonSyncService:
             except Exception as exc:
                 errors.append(f"{ticker}: {exc}")
         return SyncResult(
-            snapshot_id=snapshot.id,
+            snapshot_id=snapshot_id,
             synced_tickers=tickers_to_sync,
             errors=errors,
         )
@@ -138,12 +139,14 @@ class PolygonSyncService:
                 if not daily_rows:
                     raise ValueError("No daily bars returned.")
                 symbol = self._upsert_symbol(session, ticker=ticker, details=details, grouped_row=grouped_row, daily_rows=daily_rows)
+                session.flush()
                 membership = self._build_membership(snapshot_id=snapshot.id, symbol=symbol, grouped_row=grouped_row, daily_rows=daily_rows)
                 session.add(membership)
             except Exception as exc:
                 errors.append(f"{ticker}: {exc}")
 
-        for ticker in list(ALERT_BENCHMARKS) + list(SECTOR_ETF_MAP.values()):
+        supplemental_tickers = (set(ALERT_BENCHMARKS) | set(SECTOR_ETF_MAP.values())) - set(candidate_tickers)
+        for ticker in sorted(supplemental_tickers):
             try:
                 self._ensure_symbol(session, ticker)
             except Exception as exc:
@@ -261,7 +264,7 @@ class PolygonSyncService:
         symbol.country_code = "US"
         symbol.currency = "USD"
         symbol.sector = sector_name
-        symbol.industry = str(details.get("sic_description") or details.get("description") or "") or None
+        symbol.industry = str(details.get("sic_description") or "") or None
         symbol.is_active = bool(details.get("active", True))
         symbol.is_etf = self._is_etf(details)
         symbol.is_otc = bool(details.get("market") == "otc")
@@ -355,7 +358,7 @@ class PolygonSyncService:
         known_at = timestamp + timedelta(minutes=15)
         statement = insert(Bar).values(
             symbol_id=symbol_id,
-            timeframe=timeframe,
+            timeframe=timeframe.value,
             bar_timestamp=timestamp,
             known_at=known_at,
             open_price=Decimal(str(row.get("o") or 0)).quantize(Decimal("0.0001")),
