@@ -10,6 +10,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 from doctrine_engine.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from doctrine_engine.db.types import Timeframe
 
+TIMEFRAME_ENUM = Enum(
+    Timeframe,
+    name="timeframe",
+    values_callable=lambda enum_cls: [item.value for item in enum_cls],
+)
+
 
 class Feature(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "features"
@@ -31,7 +37,7 @@ class Feature(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("symbols.id", ondelete="CASCADE"),
         nullable=False,
     )
-    timeframe: Mapped[Timeframe | None] = mapped_column(Enum(Timeframe, name="timeframe"))
+    timeframe: Mapped[Timeframe | None] = mapped_column(TIMEFRAME_ENUM)
     feature_set: Mapped[str] = mapped_column(String(64), nullable=False)
     feature_version: Mapped[str] = mapped_column(String(32), nullable=False, default="v1")
     bar_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

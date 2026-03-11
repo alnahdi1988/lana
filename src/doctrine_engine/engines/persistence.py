@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert
@@ -73,6 +74,8 @@ def _serialize(value: Any) -> Any:
     if value is None:
         return None
     if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, UUID):
         return str(value)
     if isinstance(value, datetime):
         return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")

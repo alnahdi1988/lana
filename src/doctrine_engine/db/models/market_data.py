@@ -10,6 +10,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 from doctrine_engine.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from doctrine_engine.db.types import MarketDataSource, Timeframe
 
+TIMEFRAME_ENUM = Enum(
+    Timeframe,
+    name="timeframe",
+    values_callable=lambda enum_cls: [item.value for item in enum_cls],
+)
+
 
 class Bar(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "bars"
@@ -32,7 +38,7 @@ class Bar(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
     )
     timeframe: Mapped[Timeframe] = mapped_column(
-        Enum(Timeframe, name="timeframe"),
+        TIMEFRAME_ENUM,
         nullable=False,
     )
     bar_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
