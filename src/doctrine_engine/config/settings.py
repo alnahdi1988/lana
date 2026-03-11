@@ -19,6 +19,10 @@ class Settings(BaseSettings):
         default="postgresql+psycopg://postgres:postgres@localhost:5432/doctrine"
     )
     redis_url: str = "redis://localhost:6379/0"
+    telegram_enabled: bool = False
+    telegram_bot_token: str | None = None
+    telegram_chat_id: str | None = None
+    alert_cooldown_minutes: int = 60
     log_level: str = "INFO"
 
 
