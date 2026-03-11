@@ -115,8 +115,14 @@ class PolygonClient:
         except Exception as exc:  # pragma: no cover - exercised through tests with patched clients
             raise PolygonApiError(f"Polygon request failed: {exc}") from exc
         status = payload.get("status")
-        if status not in {None, "OK"}:
+        has_data = any(
+            payload.get(key) not in (None, [], {})
+            for key in ("results", "result")
+        )
+        if status not in {None, "OK", "DELAYED"}:
             raise PolygonApiError(f"Polygon request returned status={status!r}: {payload}")
+        if status == "DELAYED" and not has_data:
+            raise PolygonApiError(f"Polygon delayed response contained no data: {payload}")
         return payload
 
     def _with_api_key(self, url: str) -> str:

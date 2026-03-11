@@ -343,7 +343,7 @@ class PolygonSyncService:
 
     def _latest_grouped_session(self) -> tuple[date, list[dict]]:
         today = datetime.now(timezone.utc).date()
-        for offset in range(0, 7):
+        for offset in range(1, 8):
             session_date = today - timedelta(days=offset)
             rows = self.polygon_client.get_grouped_daily(session_date)
             if rows:
