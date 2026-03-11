@@ -136,6 +136,34 @@ alembic upgrade head
 - If TimescaleDB is not installed, the migration still succeeds and leaves `bars` as a normal PostgreSQL table.
 - The `bars.known_at`, `features.known_at`, `signals.known_at`, and `trade_plans.known_at` columns preserve delayed-data auditability; no live-bar assumptions should be layered on top of this schema.
 
+## Product Commands
+
+After configuring `.env`, install the package and use the console entrypoint:
+
+```powershell
+pip install -e .
+```
+
+Single run:
+
+```powershell
+doctrine once
+```
+
+Continuous interval runner:
+
+```powershell
+doctrine loop
+```
+
+Local operator UI:
+
+```powershell
+doctrine web
+```
+
+The runner uses real provider credentials from `.env`, stores operational state in the local SQLite file configured by `SDE_OPERATOR_STATE_DB_PATH`, and the operator UI reads from that state store.
+
 ## Initial build order
 
 1. DB schema and migrations
