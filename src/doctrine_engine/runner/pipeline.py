@@ -636,7 +636,12 @@ class RunnerPipeline:
     @staticmethod
     def _default_signal_engine_factory(config: RunnerConfig) -> SignalEvaluator:
         return SignalEngine(
-            SignalEngineConfig(require_micro_confirmation=config.require_micro_confirmation)
+            SignalEngineConfig(
+                require_micro_confirmation=config.require_micro_confirmation,
+                micro_context_requested=(
+                    config.require_micro_confirmation or config.timeframes.micro is not None
+                ),
+            )
         )
 
     @staticmethod

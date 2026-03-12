@@ -154,6 +154,7 @@ def test_signal_timestamp_uses_ltf_by_default_and_known_at_uses_consumed_inputs_
 
     assert result.signal_timestamp == ltf_bar.bar_timestamp
     assert result.known_at == ltf_bar.known_at
+    assert result.extensible_context["micro_state"] == "NOT_REQUESTED"
 
 
 def test_micro_present_but_config_off_does_not_affect_signal_timestamp_or_known_at() -> None:
@@ -185,10 +186,14 @@ def test_micro_present_but_config_off_does_not_affect_signal_timestamp_or_known_
         ),
     )
 
-    result = SignalEngine().evaluate(signal_input)
+    result = SignalEngine(SignalEngineConfig(micro_context_requested=True)).evaluate(signal_input)
 
     assert result.signal_timestamp == ltf_bar.bar_timestamp
     assert result.known_at == ltf_bar.known_at
+    assert result.extensible_context["micro_state"] == "AVAILABLE_NOT_USED"
+    assert result.extensible_context["micro_present"] is True
+    assert result.extensible_context["micro_used_for_confirmation"] is False
+    assert result.extensible_context["micro_trigger_state"] == "LTF_BULLISH_CHOCH"
 
 
 def test_micro_required_and_present_uses_micro_timestamps() -> None:
@@ -225,3 +230,26 @@ def test_micro_required_and_present_uses_micro_timestamps() -> None:
 
     assert result.signal_timestamp == micro_bar.bar_timestamp
     assert result.known_at == micro_bar.known_at
+    assert result.extensible_context["micro_state"] == "AVAILABLE_USED"
+
+
+def test_micro_requested_and_missing_is_reported_as_requested_unavailable() -> None:
+    symbol_id = uuid.uuid4()
+    ts = datetime(2026, 2, 4, 12, 0, tzinfo=timezone.utc)
+    htf_bar = _bar(symbol_id, Timeframe.HOUR_4, ts - timedelta(hours=4), "10.5")
+    mtf_bar = _bar(symbol_id, Timeframe.HOUR_1, ts - timedelta(hours=1), "10.3")
+    ltf_bar = _bar(symbol_id, Timeframe.MIN_15, ts, "10.4", known_offset_minutes=25)
+    signal_input = _signal_input(
+        htf_history=[_structure_result(htf_bar)],
+        htf_zone=_zone_result(htf_bar),
+        mtf_history=[_structure_result(mtf_bar)],
+        mtf_zone=_zone_result(mtf_bar),
+        mtf_pattern=_pattern_result(mtf_bar, recontainment="ACTIVE"),
+        ltf_history=[_structure_result(ltf_bar, events=[StructureEvent("BULLISH_CHOCH", ltf_bar.bar_timestamp, ltf_bar.bar_timestamp, Decimal("10.2"), Decimal("10.4"))])],
+        ltf_zone=_zone_result(ltf_bar),
+        ltf_pattern=_pattern_result(ltf_bar),
+    )
+
+    result = SignalEngine(SignalEngineConfig(require_micro_confirmation=True)).evaluate(signal_input)
+
+    assert result.extensible_context["micro_state"] == "REQUESTED_UNAVAILABLE"

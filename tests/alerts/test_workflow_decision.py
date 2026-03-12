@@ -31,7 +31,13 @@ def _signal_result(*, signal: str = "LONG", grade: str = "A", event_risk_blocked
         setup_state="RECONTAINMENT_CONFIRMED",
         reason_codes=["PRICE_RANGE_VALID", "UNIVERSE_ELIGIBLE", "HTF_BULLISH_STRUCTURE"],
         event_risk_blocked=event_risk_blocked,
-        extensible_context={"ltf_trigger_state": "LTF_BULLISH_CHOCH"},
+        extensible_context={
+            "ltf_trigger_state": "LTF_BULLISH_CHOCH",
+            "micro_state": "AVAILABLE_NOT_USED",
+            "micro_present": True,
+            "micro_trigger_state": "LTF_BULLISH_RECLAIM",
+            "micro_used_for_confirmation": False,
+        },
     )
 
 
@@ -72,6 +78,10 @@ def test_a_plus_long_is_new_priority() -> None:
     assert result.alert_state == "NEW"
     assert result.priority == "PRIORITY"
     assert result.payload.reason_codes == signal_result.reason_codes
+    assert result.payload.micro_state == "AVAILABLE_NOT_USED"
+    assert result.payload.micro_present is True
+    assert result.payload.micro_trigger_state == "LTF_BULLISH_RECLAIM"
+    assert result.payload.micro_used_for_confirmation is False
 
 
 def test_a_long_is_new_standard() -> None:

@@ -33,6 +33,7 @@ from doctrine_engine.runner.models import (
     RunnerConfig,
     RunnerInput,
     RunnerResult,
+    TimeframeConfig,
     UniverseSelectionConfig,
 )
 from doctrine_engine.runner.pipeline import RunnerPipeline
@@ -144,6 +145,7 @@ class DoctrineProductApp:
         return RunnerConfig(
             run_mode="ONCE",
             universe=UniverseSelectionConfig(max_symbols_per_run=self.settings.polygon_universe_refresh_limit),
+            timeframes=TimeframeConfig(micro="5M"),
             require_micro_confirmation=False,
             enable_ranking=True,
             enable_alert_workflow=True,

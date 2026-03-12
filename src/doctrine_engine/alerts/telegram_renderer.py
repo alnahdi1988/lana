@@ -24,6 +24,13 @@ class TelegramRenderer:
                 ),
                 f"Signal: {payload.signal_timestamp.isoformat()}",
                 f"Known: {payload.known_at.isoformat()}",
+                (
+                    "Micro: "
+                    f"state={payload.micro_state} | "
+                    f"present={payload.micro_present} | "
+                    f"trigger={payload.micro_trigger_state or 'NONE'} | "
+                    f"used_for_confirmation={payload.micro_used_for_confirmation}"
+                ),
                 "Data: Polygon delayed 15m. Operator workflow alert only, not live execution.",
                 f"Summary: {payload.operator_summary}",
                 f"Reasons: {', '.join(payload.reason_codes)}",

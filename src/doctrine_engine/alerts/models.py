@@ -75,6 +75,10 @@ class AlertDecisionPayload:
     priority: AlertPriority
     operator_summary: str
     reason_codes: list[str]
+    micro_state: str
+    micro_present: bool
+    micro_trigger_state: str | None
+    micro_used_for_confirmation: bool
     snapshot_path: str | None
 
 

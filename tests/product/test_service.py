@@ -4,13 +4,23 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
+from doctrine_engine.product.adapters import DbPhase2FeatureLoader
 from doctrine_engine.alerts.models import AlertWorkflowInput
 from doctrine_engine.engines.models import SignalEngineResult, TradePlanEngineResult
 from doctrine_engine.product.clients import TelegramSendResult
 from doctrine_engine.product.service import DoctrineProductApp
 from doctrine_engine.product.sync import SyncResult
 from doctrine_engine.product.state import OperationalStateStore
-from doctrine_engine.runner.models import RenderedAlertSummary, RunnerInput, RunnerResult, SymbolRunSummary
+from doctrine_engine.runner.models import (
+    RenderedAlertSummary,
+    RunnerConfig,
+    RunnerInput,
+    RunnerResult,
+    SymbolRunSummary,
+    TimeframeConfig,
+    UniverseSelectionConfig,
+    UniverseSymbolContext,
+)
 
 
 class _StubSyncService:
@@ -157,3 +167,70 @@ def test_product_service_run_once_persists_and_sends(tmp_path, monkeypatch):
     assert result.runner_result.run_status == "SUCCESS"
     assert result.transport_results[0].transport_status == "SENT"
     assert state_store.recent_alerts(limit=1, suppressed=False)[0]["telegram_status"] == "SENT"
+
+
+def test_build_runner_config_requests_5m_micro() -> None:
+    class _Settings:
+        database_url = "sqlite://"
+        polygon_api_key = None
+        telegram_enabled = False
+        telegram_bot_token = None
+        telegram_chat_id = None
+        polygon_base_url = "https://api.polygon.io"
+        polygon_timeout_seconds = 5
+        operator_state_db_path = ":memory:"
+        polygon_universe_refresh_limit = 10
+        alert_cooldown_minutes = 60
+
+    app = DoctrineProductApp(
+        settings=_Settings(),
+        session_factory=object(),
+        state_store=OperationalStateStore(":memory:"),
+        sync_service=_StubSyncService(),
+        telegram_transport=_StubTransport(),
+        runner_pipeline_factory=_StubRunnerPipeline,
+    )
+    config = app.build_runner_config()
+    assert config.timeframes.micro == "5M"
+    assert config.require_micro_confirmation is False
+
+
+def test_phase2_loader_requests_micro_when_runner_config_sets_5m(monkeypatch) -> None:
+    requested_timeframes: list[str] = []
+
+    class _SessionContext:
+        def __enter__(self):
+            return object()
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def _fake_load_frame_context(*, session, symbol_id, timeframe, history_window_bars):
+        requested_timeframes.append(timeframe.value)
+        return {"timeframe": timeframe.value}
+
+    monkeypatch.setattr("doctrine_engine.product.adapters._load_frame_context", _fake_load_frame_context)
+
+    loader = DbPhase2FeatureLoader(session_factory=lambda: _SessionContext(), history_window_bars=10)
+    symbol = UniverseSymbolContext(
+        symbol_id=uuid.uuid4(),
+        ticker="SOFI",
+        universe_snapshot_id=None,
+        universe_eligible=True,
+        price_reference=Decimal("18.29"),
+        universe_reason_codes=[],
+        universe_known_at=datetime(2026, 3, 11, 23, 0, tzinfo=timezone.utc),
+    )
+    runner_input = RunnerInput(
+        run_id=uuid.uuid4(),
+        triggered_at=datetime(2026, 3, 11, 23, 0, tzinfo=timezone.utc),
+        config=RunnerConfig(
+            universe=UniverseSelectionConfig(max_symbols_per_run=None),
+            timeframes=TimeframeConfig(micro="5M"),
+        ),
+    )
+
+    result = loader.load(symbol, runner_input)
+
+    assert requested_timeframes == ["4H", "1H", "15M", "5M"]
+    assert result.micro == {"timeframe": "5M"}

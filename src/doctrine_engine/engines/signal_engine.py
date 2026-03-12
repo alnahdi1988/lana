@@ -4,14 +4,18 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Iterable
+import logging
 
 from doctrine_engine.engines.models import (
     LTFTriggerState,
+    MicroState,
     OutputSetupState,
     SignalBias,
     SignalEngineInput,
     SignalEngineResult,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,6 +23,7 @@ class SignalEngineConfig:
     signal_version: str = "v1"
     long_confidence_threshold: Decimal = Decimal("0.70")
     require_micro_confirmation: bool = False
+    micro_context_requested: bool = False
     fail_closed_event_risk: bool = False
     fail_closed_regime: bool = False
     htf_bearish_event_lookback_bars: int = 3
@@ -57,12 +62,21 @@ class SignalEngine:
         )
         ltf_code = self._ltf_reason_code(ltf_trigger_state)
 
-        micro_used = self.config.require_micro_confirmation and signal_input.micro is not None
+        micro_requested = self.config.require_micro_confirmation or self.config.micro_context_requested
+        micro_present = signal_input.micro is not None
+        micro_used = self.config.require_micro_confirmation and micro_present
         micro_trigger_state = (
             self._determine_trigger_state(signal_input.micro, self.config.micro_trigger_freshness_bars)
-            if micro_used
-            else "LTF_NO_TRIGGER"
+            if micro_present
+            else None
         )
+        micro_state: MicroState = self._micro_state(
+            micro_requested=micro_requested,
+            micro_present=micro_present,
+            micro_used=micro_used,
+        )
+        if micro_present and not micro_used:
+            LOGGER.debug("5M micro context present but not used for confirmation for %s.", signal_input.ticker)
 
         event_risk_blocked = signal_input.event_risk.blocked is True
         event_risk_incomplete_block = (
@@ -84,7 +98,7 @@ class SignalEngine:
             and ltf_trigger_state != "LTF_NO_TRIGGER"
             and (
                 not self.config.require_micro_confirmation
-                or (signal_input.micro is not None and micro_trigger_state != "LTF_NO_TRIGGER")
+                or (micro_present and micro_trigger_state != "LTF_NO_TRIGGER")
             )
         )
         alignment_code = "CROSS_FRAME_ALIGNMENT" if cross_frame_aligned else "NO_CROSS_FRAME_CONFIRMATION"
@@ -122,7 +136,7 @@ class SignalEngine:
             "micro_trigger": (
                 True
                 if not self.config.require_micro_confirmation
-                else signal_input.micro is not None and micro_trigger_state != "LTF_NO_TRIGGER"
+                else micro_present and micro_trigger_state != "LTF_NO_TRIGGER"
             ),
             "cross_frame_aligned": cross_frame_aligned,
             "confidence_threshold": confidence >= self.config.long_confidence_threshold,
@@ -177,7 +191,10 @@ class SignalEngine:
             extensible_context={
                 "internal_mtf_state": internal_mtf_state,
                 "ltf_trigger_state": ltf_trigger_state,
-                "micro_trigger_state": micro_trigger_state if self.config.require_micro_confirmation else None,
+                "micro_state": micro_state,
+                "micro_trigger_state": micro_trigger_state,
+                "micro_present": micro_present,
+                "micro_used_for_confirmation": micro_used,
                 "cross_frame_aligned": cross_frame_aligned,
                 "consumed_known_at": [known_at.isoformat() for known_at in self._consumed_known_ats(signal_input)],
                 "regime_snapshot": {
@@ -436,3 +453,13 @@ class SignalEngine:
         if self.config.require_micro_confirmation and signal_input.micro is not None:
             known_ats.append(signal_input.micro.latest_bar.known_at)
         return known_ats
+
+    @staticmethod
+    def _micro_state(*, micro_requested: bool, micro_present: bool, micro_used: bool) -> MicroState:
+        if not micro_requested:
+            return "NOT_REQUESTED"
+        if not micro_present:
+            return "REQUESTED_UNAVAILABLE"
+        if micro_used:
+            return "AVAILABLE_USED"
+        return "AVAILABLE_NOT_USED"

@@ -73,6 +73,12 @@ LTFTriggerState = Literal[
     "LTF_BULLISH_BOS",
     "LTF_NO_TRIGGER",
 ]
+MicroState = Literal[
+    "NOT_REQUESTED",
+    "REQUESTED_UNAVAILABLE",
+    "AVAILABLE_NOT_USED",
+    "AVAILABLE_USED",
+]
 SignalResultValue = Literal["LONG", "NONE"]
 SignalResultGrade = Literal["A+", "A", "B", "IGNORE"]
 SectorStrength = Literal["STRONG", "NEUTRAL", "WEAK", "UNKNOWN"]

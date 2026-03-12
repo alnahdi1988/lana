@@ -58,6 +58,12 @@ class AlertWorkflow:
             priority=priority,
             operator_summary="",
             reason_codes=list(signal_result.reason_codes),
+            micro_state=str(signal_result.extensible_context.get("micro_state", "NOT_REQUESTED")),
+            micro_present=bool(signal_result.extensible_context.get("micro_present", False)),
+            micro_trigger_state=signal_result.extensible_context.get("micro_trigger_state"),
+            micro_used_for_confirmation=bool(
+                signal_result.extensible_context.get("micro_used_for_confirmation", False)
+            ),
             snapshot_path=None,
         )
         payload = replace(payload, operator_summary=self._operator_summary(payload))

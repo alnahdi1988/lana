@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import logging
 import statistics
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -69,6 +70,8 @@ from doctrine_engine.runner.models import (
     SymbolMarketContext,
     UniverseSymbolContext,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _timeframe_db_value(timeframe: Timeframe) -> str:
@@ -228,7 +231,10 @@ class DbPhase2FeatureLoader(Phase2FeatureLoader):
                     history_window_bars=self.history_window_bars,
                 )
                 if micro is None:
+                    LOGGER.warning("5M micro context requested but unavailable for %s.", symbol.ticker)
                     return None
+            else:
+                LOGGER.debug("5M micro context not requested for %s.", symbol.ticker)
             return PersistedPhase2Context(htf=htf, mtf=mtf, ltf=ltf, micro=micro)
 
 
