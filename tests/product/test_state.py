@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import sqlite3
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
+from pathlib import Path
 
 from doctrine_engine.alerts.workflow import AlertWorkflow
 from doctrine_engine.alerts.models import AlertWorkflowInput
@@ -10,6 +12,85 @@ from doctrine_engine.engines.models import SignalEngineResult, TradePlanEngineRe
 from doctrine_engine.product.clients import TelegramSendResult
 from doctrine_engine.product.state import OperationalStateStore
 from doctrine_engine.runner.models import RunnerResult, SymbolRunSummary
+
+
+def _alert_columns(db_path: Path) -> list[str]:
+    connection = sqlite3.connect(db_path)
+    try:
+        rows = connection.execute("PRAGMA table_info(alerts)").fetchall()
+    finally:
+        connection.close()
+    return [row[1] for row in rows]
+
+
+def test_operational_state_store_initialize_creates_micro_columns(tmp_path):
+    db_path = tmp_path / "ops.db"
+
+    OperationalStateStore(str(db_path))
+
+    columns = _alert_columns(db_path)
+
+    assert "micro_state" in columns
+    assert "micro_present" in columns
+    assert "micro_trigger_state" in columns
+    assert "micro_used_for_confirmation" in columns
+
+
+def test_operational_state_store_initialize_migrates_existing_alerts_table(tmp_path):
+    db_path = tmp_path / "ops.db"
+    connection = sqlite3.connect(db_path)
+    try:
+        connection.executescript(
+            """
+            CREATE TABLE alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT NOT NULL,
+                signal_id TEXT NOT NULL,
+                symbol_id TEXT NOT NULL,
+                ticker TEXT NOT NULL,
+                setup_state TEXT NOT NULL,
+                entry_type TEXT NOT NULL,
+                alert_state TEXT NOT NULL,
+                send INTEGER NOT NULL,
+                family_key TEXT NOT NULL,
+                payload_fingerprint TEXT NOT NULL,
+                signal_timestamp TEXT NOT NULL,
+                known_at TEXT NOT NULL,
+                reason_codes_json TEXT NOT NULL,
+                rendered_text TEXT,
+                telegram_status TEXT NOT NULL,
+                telegram_message_id TEXT,
+                telegram_error TEXT,
+                created_at TEXT NOT NULL
+            );
+            """
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    OperationalStateStore(str(db_path))
+
+    columns = _alert_columns(db_path)
+
+    assert "micro_state" in columns
+    assert "micro_present" in columns
+    assert "micro_trigger_state" in columns
+    assert "micro_used_for_confirmation" in columns
+
+
+def test_operational_state_store_initialize_is_idempotent_for_micro_columns(tmp_path):
+    db_path = tmp_path / "ops.db"
+
+    OperationalStateStore(str(db_path))
+    OperationalStateStore(str(db_path))
+
+    columns = _alert_columns(db_path)
+
+    assert columns.count("micro_state") == 1
+    assert columns.count("micro_present") == 1
+    assert columns.count("micro_trigger_state") == 1
+    assert columns.count("micro_used_for_confirmation") == 1
 
 
 def test_operational_state_store_round_trip(tmp_path):
@@ -34,7 +115,13 @@ def test_operational_state_store_round_trip(tmp_path):
         setup_state="RECONTAINMENT_CONFIRMED",
         reason_codes=["PRICE_RANGE_VALID", "UNIVERSE_ELIGIBLE"],
         event_risk_blocked=False,
-        extensible_context={"ltf_trigger_state": "LTF_BULLISH_BOS"},
+        extensible_context={
+            "ltf_trigger_state": "LTF_BULLISH_BOS",
+            "micro_state": "AVAILABLE_NOT_USED",
+            "micro_present": True,
+            "micro_trigger_state": "LTF_BULLISH_RECLAIM",
+            "micro_used_for_confirmation": False,
+        },
     )
     trade_plan_result = TradePlanEngineResult(
         signal_id=signal_id,
@@ -109,10 +196,14 @@ def test_operational_state_store_round_trip(tmp_path):
 
     exact = store.load_prior_alert_state(symbol_id, "RECONTAINMENT_CONFIRMED", "BASE")
     broader = store.load_prior_alert_state(symbol_id, "RECONTAINMENT_CONFIRMED", "CONFIRMATION")
+    alert = store.recent_alerts(limit=1, suppressed=False)[0]
     assert exact is not None
     assert broader is not None
     assert exact.signal_id == signal_id
     assert broader.signal_id == signal_id
     assert store.latest_run()["run_status"] == "SUCCESS"
-    assert store.recent_alerts(limit=1, suppressed=False)[0]["telegram_status"] == "SENT"
-
+    assert alert["telegram_status"] == "SENT"
+    assert alert["micro_state"] == "AVAILABLE_NOT_USED"
+    assert alert["micro_present"] == 1
+    assert alert["micro_trigger_state"] == "LTF_BULLISH_RECLAIM"
+    assert alert["micro_used_for_confirmation"] == 0

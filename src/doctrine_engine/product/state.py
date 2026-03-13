@@ -98,6 +98,10 @@ class OperationalStateStore:
                     signal_timestamp TEXT NOT NULL,
                     known_at TEXT NOT NULL,
                     reason_codes_json TEXT NOT NULL,
+                    micro_state TEXT,
+                    micro_present INTEGER,
+                    micro_trigger_state TEXT,
+                    micro_used_for_confirmation INTEGER,
                     rendered_text TEXT,
                     telegram_status TEXT NOT NULL,
                     telegram_message_id TEXT,
@@ -135,6 +139,17 @@ class OperationalStateStore:
                 );
                 """
             )
+            # Migrate existing alerts tables that predate micro columns
+            existing_cols = {row[1] for row in connection.execute("PRAGMA table_info(alerts)").fetchall()}
+            for col_def in (
+                "micro_state TEXT",
+                "micro_present INTEGER",
+                "micro_trigger_state TEXT",
+                "micro_used_for_confirmation INTEGER",
+            ):
+                col_name = col_def.split()[0]
+                if col_name not in existing_cols:
+                    connection.execute(f"ALTER TABLE alerts ADD COLUMN {col_def}")
 
     def load_prior_alert_state(self, symbol_id: uuid.UUID, setup_state: str, entry_type: str) -> PriorAlertState | None:
         with self._connect() as connection:
@@ -279,12 +294,16 @@ class OperationalStateStore:
                     signal_timestamp,
                     known_at,
                     reason_codes_json,
+                    micro_state,
+                    micro_present,
+                    micro_trigger_state,
+                    micro_used_for_confirmation,
                     rendered_text,
                     telegram_status,
                     telegram_message_id,
                     telegram_error,
                     created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(run_id),
@@ -300,6 +319,10 @@ class OperationalStateStore:
                     payload.signal_timestamp.isoformat(),
                     payload.known_at.isoformat(),
                     json.dumps(payload.reason_codes),
+                    payload.micro_state,
+                    1 if payload.micro_present else 0,
+                    payload.micro_trigger_state,
+                    1 if payload.micro_used_for_confirmation else 0,
                     rendered_text,
                     transport_result.status,
                     transport_result.message_id,

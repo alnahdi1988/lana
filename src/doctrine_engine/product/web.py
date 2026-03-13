@@ -78,18 +78,27 @@ def _alert_table(rows: list[dict]) -> str:
         return "<p>No alerts.</p>"
     parts = [
         "<table><thead><tr>",
-        "<th>created_at</th><th>ticker</th><th>alert_state</th><th>setup_state</th><th>entry_type</th><th>telegram_status</th><th>telegram_error</th><th>preview</th>",
+        "<th>created_at</th><th>ticker</th><th>alert_state</th><th>setup_state</th>"
+        "<th>entry_type</th><th>micro_state</th><th>micro_present</th>"
+        "<th>micro_trigger</th><th>micro_used_confirm</th>"
+        "<th>telegram_status</th><th>telegram_error</th><th>preview</th>",
         "</tr></thead><tbody>",
     ]
     for row in rows:
+        micro_present_raw = row.get("micro_present")
+        micro_used_raw = row.get("micro_used_for_confirmation")
         parts.append("<tr>")
         parts.append(f"<td>{escape(str(row.get('created_at', '')))}</td>")
         parts.append(f"<td>{escape(str(row.get('ticker', '')))}</td>")
         parts.append(f"<td>{escape(str(row.get('alert_state', '')))}</td>")
         parts.append(f"<td>{escape(str(row.get('setup_state', '')))}</td>")
         parts.append(f"<td>{escape(str(row.get('entry_type', '')))}</td>")
+        parts.append(f"<td>{escape(str(row.get('micro_state', '') or ''))}</td>")
+        parts.append(f"<td>{escape(str(bool(micro_present_raw)) if micro_present_raw is not None else '')}</td>")
+        parts.append(f"<td>{escape(str(row.get('micro_trigger_state', '') or ''))}</td>")
+        parts.append(f"<td>{escape(str(bool(micro_used_raw)) if micro_used_raw is not None else '')}</td>")
         parts.append(f"<td>{escape(str(row.get('telegram_status', '')))}</td>")
-        parts.append(f"<td>{escape(str(row.get('telegram_error', '')))}</td>")
+        parts.append(f"<td>{escape(str(row.get('telegram_error', '') or ''))}</td>")
         parts.append(f"<td><pre>{escape(str(row.get('rendered_text', '') or ''))}</pre></td>")
         parts.append("</tr>")
     parts.append("</tbody></table>")

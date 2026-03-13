@@ -37,7 +37,12 @@ def test_operator_web_renders_latest_state(tmp_path):
         setup_state="RECONTAINMENT_CONFIRMED",
         reason_codes=["PRICE_RANGE_VALID"],
         event_risk_blocked=False,
-        extensible_context={},
+        extensible_context={
+            "micro_state": "AVAILABLE_NOT_USED",
+            "micro_present": True,
+            "micro_trigger_state": "LTF_BULLISH_RECLAIM",
+            "micro_used_for_confirmation": False,
+        },
     )
     trade_plan_result = TradePlanEngineResult(
         signal_id=signal_id,
@@ -113,7 +118,10 @@ def test_operator_web_renders_latest_state(tmp_path):
     assert "Doctrine Operator" in response.text
     assert "TEST" in response.text
     assert "preview text" in response.text
+    assert "AVAILABLE_NOT_USED" in response.text
+    assert "LTF_BULLISH_RECLAIM" in response.text
+    assert "True" in response.text
+    assert "False" in response.text
     health = client.get("/health")
     assert health.status_code == 200
     assert health.json()["latest_run"]["run_status"] == "SUCCESS"
-

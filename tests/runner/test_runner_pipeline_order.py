@@ -386,6 +386,10 @@ def make_alert_decision(signal_id: uuid.UUID, symbol: UniverseSymbolContext) -> 
         priority="STANDARD",
         operator_summary="summary",
         reason_codes=["PRICE_RANGE_VALID"],
+        micro_state="NOT_REQUESTED",
+        micro_present=False,
+        micro_trigger_state=None,
+        micro_used_for_confirmation=False,
         snapshot_path=None,
     )
     return AlertDecisionResult(
