@@ -31,6 +31,12 @@ class TelegramRenderer:
                     f"trigger={payload.micro_trigger_state or 'NONE'} | "
                     f"used_for_confirmation={payload.micro_used_for_confirmation}"
                 ),
+                (
+                    "Context: "
+                    f"market={payload.market_regime or 'UNKNOWN'} | "
+                    f"sector={payload.sector_regime or 'UNKNOWN'} | "
+                    f"event_risk={payload.event_risk_class or 'UNKNOWN'}"
+                ),
                 "Data: Polygon delayed 15m. Operator workflow alert only, not live execution.",
                 f"Summary: {payload.operator_summary}",
                 f"Reasons: {', '.join(payload.reason_codes)}",

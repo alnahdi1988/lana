@@ -191,6 +191,9 @@ class SignalEngine:
             extensible_context={
                 "internal_mtf_state": internal_mtf_state,
                 "ltf_trigger_state": ltf_trigger_state,
+                "market_regime": signal_input.regime.market_regime,
+                "sector_regime": signal_input.regime.sector_regime,
+                "event_risk_class": signal_input.event_risk.event_risk_class,
                 "micro_state": micro_state,
                 "micro_trigger_state": micro_trigger_state,
                 "micro_present": micro_present,

@@ -62,6 +62,9 @@ class AlertDecisionPayload:
     confidence: Decimal
     grade: str
     setup_state: str
+    market_regime: str | None
+    sector_regime: str | None
+    event_risk_class: str | None
     entry_type: str
     entry_zone_low: Decimal
     entry_zone_high: Decimal

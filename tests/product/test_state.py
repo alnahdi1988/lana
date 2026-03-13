@@ -34,6 +34,11 @@ def test_operational_state_store_initialize_creates_micro_columns(tmp_path):
     assert "micro_present" in columns
     assert "micro_trigger_state" in columns
     assert "micro_used_for_confirmation" in columns
+    assert "suppression_reason" in columns
+    assert "operator_summary" in columns
+    assert "market_regime" in columns
+    assert "sector_regime" in columns
+    assert "event_risk_class" in columns
 
 
 def test_operational_state_store_initialize_migrates_existing_alerts_table(tmp_path):
@@ -77,6 +82,11 @@ def test_operational_state_store_initialize_migrates_existing_alerts_table(tmp_p
     assert "micro_present" in columns
     assert "micro_trigger_state" in columns
     assert "micro_used_for_confirmation" in columns
+    assert "suppression_reason" in columns
+    assert "operator_summary" in columns
+    assert "market_regime" in columns
+    assert "sector_regime" in columns
+    assert "event_risk_class" in columns
 
 
 def test_operational_state_store_initialize_is_idempotent_for_micro_columns(tmp_path):
@@ -91,6 +101,11 @@ def test_operational_state_store_initialize_is_idempotent_for_micro_columns(tmp_
     assert columns.count("micro_present") == 1
     assert columns.count("micro_trigger_state") == 1
     assert columns.count("micro_used_for_confirmation") == 1
+    assert columns.count("suppression_reason") == 1
+    assert columns.count("operator_summary") == 1
+    assert columns.count("market_regime") == 1
+    assert columns.count("sector_regime") == 1
+    assert columns.count("event_risk_class") == 1
 
 
 def test_operational_state_store_round_trip(tmp_path):
@@ -116,6 +131,9 @@ def test_operational_state_store_round_trip(tmp_path):
         reason_codes=["PRICE_RANGE_VALID", "UNIVERSE_ELIGIBLE"],
         event_risk_blocked=False,
         extensible_context={
+            "market_regime": "BULLISH_TREND",
+            "sector_regime": "SECTOR_STRONG",
+            "event_risk_class": "NO_EVENT_RISK",
             "ltf_trigger_state": "LTF_BULLISH_BOS",
             "micro_state": "AVAILABLE_NOT_USED",
             "micro_present": True,
@@ -207,3 +225,8 @@ def test_operational_state_store_round_trip(tmp_path):
     assert alert["micro_present"] == 1
     assert alert["micro_trigger_state"] == "LTF_BULLISH_RECLAIM"
     assert alert["micro_used_for_confirmation"] == 0
+    assert alert["suppression_reason"] is None
+    assert alert["operator_summary"] == decision.payload.operator_summary
+    assert alert["market_regime"] == "BULLISH_TREND"
+    assert alert["sector_regime"] == "SECTOR_STRONG"
+    assert alert["event_risk_class"] == "NO_EVENT_RISK"

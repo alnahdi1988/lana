@@ -17,6 +17,9 @@ def _payload(*, alert_state: str = "NEW") -> AlertDecisionPayload:
         confidence=Decimal("0.8100"),
         grade="A",
         setup_state="RECONTAINMENT_CONFIRMED",
+        market_regime="BULLISH_TREND",
+        sector_regime="SECTOR_STRONG",
+        event_risk_class="NO_EVENT_RISK",
         entry_type="BASE",
         entry_zone_low=Decimal("10.0000"),
         entry_zone_high=Decimal("10.5500"),
@@ -48,7 +51,8 @@ def test_renderer_uses_exact_line_structure_and_delayed_wording() -> None:
     assert lines[2] == "Zone: 10.0000 - 10.5500 | Confirm: 10.8000"
     assert lines[3] == "Invalid: 9.8000 | TP1: 10.9500 | TP2: 11.3000"
     assert lines[6] == "Micro: state=AVAILABLE_NOT_USED | present=True | trigger=LTF_BULLISH_RECLAIM | used_for_confirmation=False"
-    assert lines[7] == "Data: Polygon delayed 15m. Operator workflow alert only, not live execution."
+    assert lines[7] == "Context: market=BULLISH_TREND | sector=SECTOR_STRONG | event_risk=NO_EVENT_RISK"
+    assert lines[8] == "Data: Polygon delayed 15m. Operator workflow alert only, not live execution."
 
 
 def test_renderer_uses_update_prefix_for_upgraded_payloads() -> None:

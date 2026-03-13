@@ -422,6 +422,12 @@ class TestCanonicalSofiScenario:
         _, workflow_result, _ = self._run_full_chain()
         assert workflow_result.payload.micro_used_for_confirmation is False
 
+    def test_alert_payload_market_context_propagated(self):
+        _, workflow_result, _ = self._run_full_chain()
+        assert workflow_result.payload.market_regime == "BULLISH_TREND"
+        assert workflow_result.payload.sector_regime == "SECTOR_STRONG"
+        assert workflow_result.payload.event_risk_class == "NO_EVENT_RISK"
+
     def test_rendered_text_contains_micro_state(self):
         _, _, rendered = self._run_full_chain()
         assert "AVAILABLE_NOT_USED" in rendered.text
@@ -441,6 +447,10 @@ class TestCanonicalSofiScenario:
     def test_rendered_text_contains_delayed_data_disclaimer(self):
         _, _, rendered = self._run_full_chain()
         assert "Polygon delayed 15m" in rendered.text
+
+    def test_rendered_text_contains_context_line(self):
+        _, _, rendered = self._run_full_chain()
+        assert "Context: market=BULLISH_TREND | sector=SECTOR_STRONG | event_risk=NO_EVENT_RISK" in rendered.text
 
 
 # ---------------------------------------------------------------------------

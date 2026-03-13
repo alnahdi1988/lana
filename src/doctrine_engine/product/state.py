@@ -97,7 +97,12 @@ class OperationalStateStore:
                     payload_fingerprint TEXT NOT NULL,
                     signal_timestamp TEXT NOT NULL,
                     known_at TEXT NOT NULL,
+                    suppression_reason TEXT,
+                    operator_summary TEXT NOT NULL,
                     reason_codes_json TEXT NOT NULL,
+                    market_regime TEXT,
+                    sector_regime TEXT,
+                    event_risk_class TEXT,
                     micro_state TEXT,
                     micro_present INTEGER,
                     micro_trigger_state TEXT,
@@ -142,6 +147,11 @@ class OperationalStateStore:
             # Migrate existing alerts tables that predate micro columns
             existing_cols = {row[1] for row in connection.execute("PRAGMA table_info(alerts)").fetchall()}
             for col_def in (
+                "suppression_reason TEXT",
+                "operator_summary TEXT",
+                "market_regime TEXT",
+                "sector_regime TEXT",
+                "event_risk_class TEXT",
                 "micro_state TEXT",
                 "micro_present INTEGER",
                 "micro_trigger_state TEXT",
@@ -293,7 +303,12 @@ class OperationalStateStore:
                     payload_fingerprint,
                     signal_timestamp,
                     known_at,
+                    suppression_reason,
+                    operator_summary,
                     reason_codes_json,
+                    market_regime,
+                    sector_regime,
+                    event_risk_class,
                     micro_state,
                     micro_present,
                     micro_trigger_state,
@@ -303,7 +318,7 @@ class OperationalStateStore:
                     telegram_message_id,
                     telegram_error,
                     created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(run_id),
@@ -318,7 +333,12 @@ class OperationalStateStore:
                     decision_result.payload_fingerprint,
                     payload.signal_timestamp.isoformat(),
                     payload.known_at.isoformat(),
+                    decision_result.suppression_reason,
+                    payload.operator_summary,
                     json.dumps(payload.reason_codes),
+                    payload.market_regime,
+                    payload.sector_regime,
+                    payload.event_risk_class,
                     payload.micro_state,
                     1 if payload.micro_present else 0,
                     payload.micro_trigger_state,
@@ -413,28 +433,71 @@ class OperationalStateStore:
         rows = self.recent_runs(limit=1)
         return rows[0] if rows else None
 
-    def latest_run_symbols(self) -> list[dict]:
+    def latest_run_symbols(
+        self,
+        *,
+        ticker: str | None = None,
+        signal: str | None = None,
+        alert_state: str | None = None,
+    ) -> list[dict]:
         latest = self.latest_run()
         if latest is None:
             return []
+        where_parts = ["run_id = ?"]
+        params: list[object] = [latest["run_id"]]
+        if ticker:
+            where_parts.append("ticker = ?")
+            params.append(ticker)
+        if signal:
+            where_parts.append("signal = ?")
+            params.append(signal)
+        if alert_state:
+            where_parts.append("alert_state = ?")
+            params.append(alert_state)
         return self._query_all(
-            """
+            f"""
             SELECT *
             FROM symbol_runs
-            WHERE run_id = ?
+            WHERE {" AND ".join(where_parts)}
             ORDER BY ticker ASC
             """,
-            (latest["run_id"],),
+            tuple(params),
         )
 
-    def recent_alerts(self, *, limit: int = 20, suppressed: bool | None = None) -> list[dict]:
-        where = ""
+    def recent_alerts(
+        self,
+        *,
+        limit: int = 20,
+        suppressed: bool | None = None,
+        ticker: str | None = None,
+        setup_state: str | None = None,
+        micro_state: str | None = None,
+        alert_state: str | None = None,
+        telegram_status: str | None = None,
+    ) -> list[dict]:
+        where_parts: list[str] = []
         params: list[object] = []
         if suppressed is True:
-            where = "WHERE send = 0"
+            where_parts.append("send = 0")
         elif suppressed is False:
-            where = "WHERE send = 1"
+            where_parts.append("send = 1")
+        if ticker:
+            where_parts.append("ticker = ?")
+            params.append(ticker)
+        if setup_state:
+            where_parts.append("setup_state = ?")
+            params.append(setup_state)
+        if micro_state:
+            where_parts.append("micro_state = ?")
+            params.append(micro_state)
+        if alert_state:
+            where_parts.append("alert_state = ?")
+            params.append(alert_state)
+        if telegram_status:
+            where_parts.append("telegram_status = ?")
+            params.append(telegram_status)
         params.append(limit)
+        where = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
         return self._query_all(
             f"""
             SELECT *
@@ -445,6 +508,9 @@ class OperationalStateStore:
             """,
             tuple(params),
         )
+
+    def recent_alerts_for_ticker(self, ticker: str, *, limit: int = 20) -> list[dict]:
+        return self.recent_alerts(limit=limit, ticker=ticker)
 
     def recent_errors(self, limit: int = 20) -> list[dict]:
         return self._query_all(

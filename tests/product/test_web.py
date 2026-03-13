@@ -38,6 +38,9 @@ def test_operator_web_renders_latest_state(tmp_path):
         reason_codes=["PRICE_RANGE_VALID"],
         event_risk_blocked=False,
         extensible_context={
+            "market_regime": "BULLISH_TREND",
+            "sector_regime": "SECTOR_STRONG",
+            "event_risk_class": "NO_EVENT_RISK",
             "micro_state": "AVAILABLE_NOT_USED",
             "micro_present": True,
             "micro_trigger_state": "LTF_BULLISH_RECLAIM",
@@ -122,6 +125,21 @@ def test_operator_web_renders_latest_state(tmp_path):
     assert "LTF_BULLISH_RECLAIM" in response.text
     assert "True" in response.text
     assert "False" in response.text
+    assert "BULLISH_TREND" in response.text
+    assert "SECTOR_STRONG" in response.text
+    assert "NO_EVENT_RISK" in response.text
     health = client.get("/health")
     assert health.status_code == 200
     assert health.json()["latest_run"]["run_status"] == "SUCCESS"
+    alerts = client.get("/api/alerts", params={"ticker": "TEST", "micro_state": "AVAILABLE_NOT_USED"})
+    assert alerts.status_code == 200
+    payload = alerts.json()[0]
+    assert payload["micro_state"] == "AVAILABLE_NOT_USED"
+    assert payload["market_regime"] == "BULLISH_TREND"
+    assert payload["sector_regime"] == "SECTOR_STRONG"
+    assert payload["event_risk_class"] == "NO_EVENT_RISK"
+    filtered_symbols = client.get("/api/symbols", params={"ticker": "TEST", "alert_state": "NEW"})
+    assert filtered_symbols.status_code == 200
+    filtered_payload = filtered_symbols.json()
+    assert len(filtered_payload) == 1
+    assert filtered_payload[0]["ticker"] == "TEST"
