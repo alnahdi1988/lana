@@ -12,9 +12,14 @@ git -C D:\Doctrine\structure-doctrine-engine push -u origin main
 ## Runtime defaults
 
 - `DoctrineProductApp.build_runner_config()` is the owner of runtime micro defaults.
-- Current defaults:
+- Frozen operator baseline defaults:
   - `timeframes.micro = "5M"`
   - `require_micro_confirmation = False`
+- Operator mode:
+  - delayed-data operator workflow
+  - Telegram primary surface
+  - local web console secondary surface
+  - local SQLite ops state
 
 ## Delayed-data policy
 
@@ -55,3 +60,14 @@ Downstream propagation:
 ## Release checkpoint
 
 - Tag: `closeout-micro-state-v1`
+
+## Remaining operational closure
+
+- Remote is not configured in the local repo yet.
+- Once the canonical remote URL is known, push with:
+
+```powershell
+git -C D:\Doctrine\structure-doctrine-engine remote add origin <REMOTE_URL>
+git -C D:\Doctrine\structure-doctrine-engine push -u origin main
+git -C D:\Doctrine\structure-doctrine-engine push origin closeout-micro-state-v1
+```

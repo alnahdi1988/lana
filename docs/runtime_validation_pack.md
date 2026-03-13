@@ -127,3 +127,58 @@ The closeout runtime proof confirms:
 - rendered operator text preserves micro-state and context
 - persisted ops state preserves micro-state and context
 - operator web surfaces the same persisted truth
+
+## Latest true operator session
+
+Real command executed:
+
+```powershell
+doctrine once
+```
+
+Observed result:
+
+```json
+{
+  "run_status": "PARTIAL_SUCCESS",
+  "total_symbols": 12,
+  "generated_signals": 2,
+  "generated_trade_plans": 1,
+  "ranked_symbols": 1,
+  "sendable_alerts": 0,
+  "rendered_alerts": 0,
+  "telegram_sent": 0,
+  "telegram_failed": 0
+}
+```
+
+Observed persisted alert:
+
+```json
+{
+  "ticker": "PBR",
+  "alert_state": "SUPPRESSED",
+  "suppression_reason": "GRADE_NOT_SENDABLE",
+  "setup_state": "BULLISH_RECLAIM",
+  "entry_type": "AGGRESSIVE",
+  "market_regime": "CHOP",
+  "sector_regime": "SECTOR_NEUTRAL",
+  "event_risk_class": "NO_EVENT_RISK",
+  "micro_state": "AVAILABLE_NOT_USED",
+  "micro_present": 1,
+  "micro_trigger_state": "LTF_BULLISH_RECLAIM",
+  "micro_used_for_confirmation": 0,
+  "telegram_status": "NOT_SENT",
+  "telegram_error": "GRADE_NOT_SENDABLE"
+}
+```
+
+Observed web console facts:
+
+```json
+{
+  "latest_run_status": "PARTIAL_SUCCESS",
+  "web_alert_history_contains_micro_state": true,
+  "web_alert_history_contains_telegram_status": true
+}
+```
