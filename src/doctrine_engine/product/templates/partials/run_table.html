@@ -1,0 +1,40 @@
+<table>
+  <thead>
+    <tr>
+      <th>Run ID</th>
+      <th>Status</th>
+      <th>Started</th>
+      <th>Finished</th>
+      <th>Total</th>
+      <th>Succeeded</th>
+      <th>Skipped</th>
+      <th>Failed</th>
+      <th>Signals</th>
+      <th>Plans</th>
+      <th>Ranked</th>
+      <th>Sendable</th>
+      <th>Rendered</th>
+      <th>Telegram Sent</th>
+      <th>Telegram Failed</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><a href="/runs/{{ latest_run.run_id if latest_run else run.run_id }}">{{ latest_run.run_id if latest_run else run.run_id }}</a></td>
+      <td><span class="badge">{{ latest_run.run_status if latest_run else run.run_status }}</span></td>
+      <td>{{ latest_run.started_at if latest_run else run.started_at }}</td>
+      <td>{{ latest_run.finished_at if latest_run else run.finished_at }}</td>
+      <td>{{ latest_run.total_symbols if latest_run else run.total_symbols }}</td>
+      <td>{{ latest_run.succeeded_symbols if latest_run else run.succeeded_symbols }}</td>
+      <td>{{ latest_run.skipped_symbols if latest_run else run.skipped_symbols }}</td>
+      <td>{{ latest_run.failed_symbols if latest_run else run.failed_symbols }}</td>
+      <td>{{ latest_run.generated_signals if latest_run else run.generated_signals }}</td>
+      <td>{{ latest_run.generated_trade_plans if latest_run else run.generated_trade_plans }}</td>
+      <td>{{ latest_run.ranked_symbols if latest_run else run.ranked_symbols }}</td>
+      <td>{{ latest_run.sendable_alerts if latest_run else run.sendable_alerts }}</td>
+      <td>{{ latest_run.rendered_alerts if latest_run else run.rendered_alerts }}</td>
+      <td>{{ latest_run.telegram_sent if latest_run else run.telegram_sent }}</td>
+      <td>{{ latest_run.telegram_failed if latest_run else run.telegram_failed }}</td>
+    </tr>
+  </tbody>
+</table>

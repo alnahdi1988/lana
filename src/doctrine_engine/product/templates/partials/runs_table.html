@@ -1,0 +1,34 @@
+{% if runs %}
+<table>
+  <thead>
+    <tr>
+      <th>Run ID</th>
+      <th>Status</th>
+      <th>Finished</th>
+      <th>Total</th>
+      <th>Skipped</th>
+      <th>Failed</th>
+      <th>Sendable</th>
+      <th>Telegram Sent</th>
+      <th>Telegram Failed</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in runs %}
+    <tr>
+      <td><a href="/runs/{{ row.run_id }}">{{ row.run_id }}</a></td>
+      <td><span class="badge">{{ row.run_status }}</span></td>
+      <td>{{ row.finished_at }}</td>
+      <td>{{ row.total_symbols }}</td>
+      <td>{{ row.skipped_symbols }}</td>
+      <td>{{ row.failed_symbols }}</td>
+      <td>{{ row.sendable_alerts }}</td>
+      <td>{{ row.telegram_sent }}</td>
+      <td>{{ row.telegram_failed }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No runs recorded.</p>
+{% endif %}

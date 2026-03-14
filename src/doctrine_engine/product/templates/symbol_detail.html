@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-header">
+  <h2>Symbol Detail</h2>
+  <p class="muted">{{ ticker }}</p>
+</section>
+
+<section class="card">
+  <h2>Recent Alerts</h2>
+  {% include "partials/alerts_table.html" with context %}
+</section>
+
+<section class="card">
+  <h2>Latest Symbol Outcomes</h2>
+  {% set latest_symbols = symbol_rows %}
+  {% include "partials/symbols_table.html" %}
+</section>
+
+<section class="card">
+  <h2>Recent Errors</h2>
+  {% set recent_errors = errors %}
+  {% include "partials/errors_table.html" %}
+</section>
+{% endblock %}

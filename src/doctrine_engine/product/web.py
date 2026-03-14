@@ -1,20 +1,57 @@
 from __future__ import annotations
 
-from html import escape
+from collections import defaultdict
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable
 
-from fastapi import FastAPI, Query
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, Query, Request
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from doctrine_engine.config.settings import get_settings
+from doctrine_engine.product.control import RuntimeController
+from doctrine_engine.product.operator_config import (
+    build_operator_settings_view,
+    load_operator_settings_document,
+    merge_operator_settings,
+    restart_required_keys,
+    save_operator_settings_document,
+    setup_is_complete,
+    validate_operator_settings,
+)
 from doctrine_engine.product.state import OperationalStateStore
 
+TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
-def create_operator_app(state_store: OperationalStateStore) -> FastAPI:
+
+def create_operator_app(
+    state_store: OperationalStateStore,
+    *,
+    controller: RuntimeController | None = None,
+    app_builder: Callable[[], Any] | None = None,
+    operator_settings_builder: Callable[[], dict[str, Any]] | None = None,
+    enforce_setup: bool = False,
+) -> FastAPI:
     app = FastAPI(title="Doctrine Operator")
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+    controller = controller or RuntimeController()
+    app_builder = app_builder or _default_app_builder
+    operator_settings_builder = operator_settings_builder or (lambda: build_operator_settings_view(get_settings()))
 
     @app.get("/health")
     def health():
-        return JSONResponse(state_store.health_snapshot())
+        payload = _status_payload(state_store, controller, operator_settings_builder)
+        payload["latest_run"] = payload["health"]["latest_run"]
+        payload["last_successful_run_time"] = payload["health"]["last_successful_run_time"]
+        return JSONResponse(payload)
+
+    @app.get("/api/status")
+    def api_status():
+        return JSONResponse(_status_payload(state_store, controller, operator_settings_builder))
 
     @app.get("/api/runs")
     def api_runs(limit: int = Query(default=20, ge=1, le=200)):
@@ -23,6 +60,17 @@ def create_operator_app(state_store: OperationalStateStore) -> FastAPI:
                 "latest_run": state_store.latest_run(),
                 "recent_runs": state_store.recent_runs(limit=limit),
                 "health": state_store.health_snapshot(),
+            }
+        )
+
+    @app.get("/api/runs/{run_id}")
+    def api_run_detail(run_id: str):
+        return JSONResponse(
+            {
+                "run": state_store.run_by_id(run_id),
+                "symbols": state_store.symbols_for_run(run_id),
+                "alerts": state_store.alerts_for_run(run_id),
+                "errors": state_store.errors_for_run(run_id),
             }
         )
 
@@ -64,233 +112,461 @@ def create_operator_app(state_store: OperationalStateStore) -> FastAPI:
 
     @app.get("/api/errors")
     def api_errors(limit: int = Query(default=50, ge=1, le=500)):
-        return JSONResponse(state_store.recent_errors(limit=limit))
+        return JSONResponse(
+            {
+                "recent_errors": state_store.recent_errors(limit=limit),
+                "grouped": state_store.grouped_recent_errors(limit=limit),
+            }
+        )
 
-    @app.get("/symbols/{ticker}", response_class=HTMLResponse)
-    def symbol_detail(ticker: str):
-        alerts = state_store.recent_alerts_for_ticker(ticker, limit=20)
-        if not alerts:
-            return HTMLResponse(f"<html><body><h1>{escape(ticker)}</h1><p>No alert history.</p></body></html>", status_code=404)
-        html = [
-            "<html><head><title>Doctrine Symbol Detail</title>",
-            _style_block(),
-            "</head><body>",
-            f"<h1>{escape(ticker)}</h1>",
-            "<p><a href='/'>Back to overview</a></p>",
-            "<h2>Recent Alerts</h2>",
-            _alert_table(alerts),
-            "</body></html>",
-        ]
-        return HTMLResponse("".join(html))
+    @app.get("/api/settings")
+    def api_settings():
+        return JSONResponse(operator_settings_builder())
 
-    @app.get("/", response_class=HTMLResponse)
-    def index(
+    @app.get("/")
+    def overview(
+        request: Request,
         ticker: str | None = None,
         signal: str | None = None,
         setup_state: str | None = None,
-        micro_state: str | None = None,
         alert_state: str | None = None,
+        micro_state: str | None = None,
         telegram_status: str | None = None,
     ):
+        redirect = _setup_redirect(request, operator_settings_builder, enforce_setup)
+        if redirect is not None:
+            return redirect
+        status_payload = _status_payload(state_store, controller, operator_settings_builder)
         latest_run = state_store.latest_run()
-        recent_runs = state_store.recent_runs(limit=10)
-        latest_symbols = state_store.latest_run_symbols(
-            ticker=ticker,
-            signal=signal,
-            alert_state=alert_state,
-        )
-        generated_alerts = state_store.recent_alerts(
-            limit=20,
-            suppressed=False,
-            ticker=ticker,
-            setup_state=setup_state,
-            micro_state=micro_state,
-            alert_state=alert_state,
-            telegram_status=telegram_status,
-        )
-        suppressed_alerts = state_store.recent_alerts(
-            limit=20,
-            suppressed=True,
-            ticker=ticker,
-            setup_state=setup_state,
-            micro_state=micro_state,
-            alert_state=alert_state,
-            telegram_status=telegram_status,
-        )
-        recent_errors = state_store.recent_errors(limit=20)
-        health_snapshot = state_store.health_snapshot()
-        html = [
-            "<html><head><title>Doctrine Operator</title>",
-            _style_block(),
-            "</head><body>",
-            "<h1>Doctrine Operator</h1>",
-            (
-                f"<p>Last successful run: "
-                f"{escape(str(health_snapshot.get('last_successful_run_time')))}</p>"
+        return templates.TemplateResponse(
+            request=request,
+            name="overview.html",
+            context=_base_context(
+                request,
+                page_title="Overview",
+                status_payload=status_payload,
+                filters={
+                    "ticker": ticker or "",
+                    "signal": signal or "",
+                    "setup_state": setup_state or "",
+                    "alert_state": alert_state or "",
+                    "micro_state": micro_state or "",
+                    "telegram_status": telegram_status or "",
+                },
+                latest_run=latest_run,
+                recent_runs=state_store.recent_runs(limit=10),
+                latest_symbols=state_store.latest_run_symbols(
+                    ticker=ticker,
+                    signal=signal,
+                    alert_state=alert_state,
+                ),
+                generated_alerts=state_store.recent_alerts(
+                    limit=20,
+                    suppressed=False,
+                    ticker=ticker,
+                    setup_state=setup_state,
+                    micro_state=micro_state,
+                    alert_state=alert_state,
+                    telegram_status=telegram_status,
+                ),
+                suppressed_alerts=state_store.recent_alerts(
+                    limit=20,
+                    suppressed=True,
+                    ticker=ticker,
+                    setup_state=setup_state,
+                    micro_state=micro_state,
+                    alert_state=alert_state,
+                    telegram_status=telegram_status,
+                ),
+                recent_errors=state_store.recent_errors(limit=20),
             ),
-            _filter_form(
+        )
+
+    @app.get("/runs")
+    def runs(request: Request):
+        redirect = _setup_redirect(request, operator_settings_builder, enforce_setup)
+        if redirect is not None:
+            return redirect
+        return templates.TemplateResponse(
+            request=request,
+            name="runs.html",
+            context=_base_context(
+                request,
+                page_title="Runs",
+                status_payload=_status_payload(state_store, controller, operator_settings_builder),
+                runs=state_store.recent_runs(limit=50),
+            ),
+        )
+
+    @app.get("/runs/{run_id}")
+    def run_detail(request: Request, run_id: str):
+        redirect = _setup_redirect(request, operator_settings_builder, enforce_setup)
+        if redirect is not None:
+            return redirect
+        run = state_store.run_by_id(run_id)
+        if run is None:
+            return RedirectResponse(url="/runs", status_code=303)
+        return templates.TemplateResponse(
+            request=request,
+            name="run_detail.html",
+            context=_base_context(
+                request,
+                page_title=f"Run {run_id}",
+                status_payload=_status_payload(state_store, controller, operator_settings_builder),
+                run=run,
+                symbols=state_store.symbols_for_run(run_id),
+                alerts=state_store.alerts_for_run(run_id),
+                errors=state_store.errors_for_run(run_id),
+            ),
+        )
+
+    @app.get("/symbols")
+    def symbols(
+        request: Request,
+        ticker: str | None = None,
+        signal: str | None = None,
+        alert_state: str | None = None,
+    ):
+        redirect = _setup_redirect(request, operator_settings_builder, enforce_setup)
+        if redirect is not None:
+            return redirect
+        rows = state_store.latest_run_symbols(ticker=ticker, signal=signal, alert_state=alert_state)
+        for row in rows:
+            latest_alerts = state_store.recent_alerts_for_ticker(str(row.get("ticker")), limit=1)
+            row["latest_alert"] = latest_alerts[0] if latest_alerts else None
+        return templates.TemplateResponse(
+            request=request,
+            name="symbols.html",
+            context=_base_context(
+                request,
+                page_title="Symbols",
+                status_payload=_status_payload(state_store, controller, operator_settings_builder),
+                symbols=rows,
+                filters={
+                    "ticker": ticker or "",
+                    "signal": signal or "",
+                    "alert_state": alert_state or "",
+                },
+            ),
+        )
+
+    @app.get("/symbols/{ticker}")
+    def symbol_detail(request: Request, ticker: str):
+        redirect = _setup_redirect(request, operator_settings_builder, enforce_setup)
+        if redirect is not None:
+            return redirect
+        alerts = state_store.recent_alerts_for_ticker(ticker, limit=20)
+        if not alerts:
+            return RedirectResponse(url="/symbols", status_code=303)
+        symbol_rows = [row for row in state_store.latest_run_symbols(ticker=ticker) if row["ticker"] == ticker]
+        errors = [row for row in state_store.recent_errors(limit=100) if row.get("ticker") == ticker]
+        return templates.TemplateResponse(
+            request=request,
+            name="symbol_detail.html",
+            context=_base_context(
+                request,
+                page_title=f"Symbol {ticker}",
+                status_payload=_status_payload(state_store, controller, operator_settings_builder),
                 ticker=ticker,
-                signal=signal,
-                setup_state=setup_state,
-                micro_state=micro_state,
-                alert_state=alert_state,
-                telegram_status=telegram_status,
+                alerts=alerts,
+                symbol_rows=symbol_rows,
+                errors=errors,
             ),
-            "<h2>Latest Run</h2>",
-            _table([latest_run] if latest_run else [], columns=[
-                "run_id", "run_status", "started_at", "finished_at", "total_symbols",
-                "succeeded_symbols", "skipped_symbols", "failed_symbols",
-                "sendable_alerts", "rendered_alerts", "telegram_sent", "telegram_failed",
-            ]),
-            "<h2>Recent Runs</h2>",
-            _table(recent_runs, columns=[
-                "run_id", "run_status", "finished_at", "total_symbols",
-                "failed_symbols", "sendable_alerts", "telegram_sent", "telegram_failed",
-            ]),
-            "<h2>Latest Run Symbols</h2>",
-            _symbol_table(latest_symbols),
-            "<h2>Generated Alerts</h2>",
-            _alert_table(generated_alerts),
-            "<h2>Suppressed Alerts</h2>",
-            _alert_table(suppressed_alerts),
-            "<h2>Recent Errors</h2>",
-            _table(recent_errors, columns=["created_at", "ticker", "stage", "error_message"]),
-            "</body></html>",
-        ]
-        return HTMLResponse("".join(html))
+        )
+
+    @app.get("/alerts")
+    def alerts(
+        request: Request,
+        ticker: str | None = None,
+        signal: str | None = None,
+        setup_state: str | None = None,
+        alert_state: str | None = None,
+        micro_state: str | None = None,
+        telegram_status: str | None = None,
+    ):
+        redirect = _setup_redirect(request, operator_settings_builder, enforce_setup)
+        if redirect is not None:
+            return redirect
+        rows = state_store.recent_alerts(
+            limit=100,
+            ticker=ticker,
+            setup_state=setup_state,
+            micro_state=micro_state,
+            alert_state=alert_state,
+            telegram_status=telegram_status,
+        )
+        if signal:
+            rows = [row for row in rows if row.get("ticker") and _latest_symbol_signal(state_store, row["ticker"]) == signal]
+        return templates.TemplateResponse(
+            request=request,
+            name="alerts.html",
+            context=_base_context(
+                request,
+                page_title="Alerts",
+                status_payload=_status_payload(state_store, controller, operator_settings_builder),
+                alerts=rows,
+                filters={
+                    "ticker": ticker or "",
+                    "signal": signal or "",
+                    "setup_state": setup_state or "",
+                    "alert_state": alert_state or "",
+                    "micro_state": micro_state or "",
+                    "telegram_status": telegram_status or "",
+                },
+            ),
+        )
+
+    @app.get("/errors")
+    def errors(request: Request):
+        redirect = _setup_redirect(request, operator_settings_builder, enforce_setup)
+        if redirect is not None:
+            return redirect
+        grouped = state_store.grouped_recent_errors(limit=100)
+        return templates.TemplateResponse(
+            request=request,
+            name="errors.html",
+            context=_base_context(
+                request,
+                page_title="Errors",
+                status_payload=_status_payload(state_store, controller, operator_settings_builder),
+                recent_errors=state_store.recent_errors(limit=100),
+                errors_by_stage=grouped["by_stage"],
+                errors_by_ticker=grouped["by_ticker"],
+            ),
+        )
+
+    @app.get("/settings")
+    def settings_page(request: Request, saved: str | None = None, restart_required: str | None = None):
+        settings_view = operator_settings_builder()
+        if enforce_setup and not settings_view["setup_complete"]:
+            return RedirectResponse(url="/setup", status_code=303)
+        return templates.TemplateResponse(
+            request=request,
+            name="settings.html",
+            context=_base_context(
+                request,
+                page_title="Settings",
+                status_payload=_status_payload(state_store, controller, operator_settings_builder),
+                operator_settings=settings_view,
+                saved=saved == "1",
+                restart_required_fields=[field for field in (restart_required or "").split(",") if field],
+            ),
+        )
+
+    @app.get("/setup")
+    def setup_page(request: Request, saved: str | None = None):
+        document = load_operator_settings_document()
+        return templates.TemplateResponse(
+            request=request,
+            name="setup.html",
+            context=_base_context(
+                request,
+                page_title="Setup",
+                status_payload=_status_payload(state_store, controller, operator_settings_builder),
+                operator_settings=document["settings"],
+                validation=document["meta"]["validation"],
+                setup_complete=setup_is_complete(document),
+                saved=saved == "1",
+            ),
+        )
+
+    @app.post("/setup/save")
+    async def setup_save(request: Request):
+        form = await request.form()
+        payload = _settings_payload_from_form(form)
+        validation = validate_operator_settings(
+            payload,
+            send_telegram_test=payload["telegram_enabled"],
+            telegram_label="SETUP TEST | Doctrine Operator",
+        )
+        if not validation.ok:
+            return templates.TemplateResponse(
+                request=request,
+                name="setup.html",
+                context=_base_context(
+                    request,
+                    page_title="Setup",
+                    status_payload=_status_payload(state_store, controller, operator_settings_builder),
+                    operator_settings=payload,
+                    validation=validation.details,
+                    setup_complete=False,
+                    saved=False,
+                ),
+                status_code=400,
+            )
+        save_operator_settings_document(payload, validation=validation.details)
+        get_settings.cache_clear()
+        controller.settings = get_settings()
+        if payload["telegram_enabled"]:
+            app_builder().state_store.record_operator_event(
+                event_type="TELEGRAM_TEST_SEND",
+                status=validation.details["telegram"]["status"],
+                detail=validation.details["telegram"]["message"],
+                metadata={
+                    "source": "setup",
+                    "message_id": validation.details["telegram"]["message_id"],
+                },
+            )
+        return RedirectResponse(url="/settings?saved=1", status_code=303)
+
+    @app.post("/settings/save")
+    async def settings_save(request: Request):
+        existing_document = load_operator_settings_document()
+        existing = existing_document["settings"]
+        form = await request.form()
+        updated = merge_operator_settings(existing, _settings_payload_from_form(form))
+        validation = validate_operator_settings(
+            updated,
+            send_telegram_test=False,
+            telegram_label="SETTINGS TEST | Doctrine Operator",
+        )
+        if not validation.ok:
+            return templates.TemplateResponse(
+                request=request,
+                name="settings.html",
+                context=_base_context(
+                    request,
+                    page_title="Settings",
+                    status_payload=_status_payload(state_store, controller, operator_settings_builder),
+                    operator_settings={**updated, "validation": validation.details},
+                    saved=False,
+                    restart_required_fields=[],
+                    validation=validation.details,
+                ),
+                status_code=400,
+            )
+        changed = restart_required_keys(existing, updated)
+        save_operator_settings_document(updated, validation=validation.details)
+        get_settings.cache_clear()
+        controller.settings = get_settings()
+        query = ""
+        if changed:
+            query = "&restart_required=" + ",".join(changed)
+        return RedirectResponse(url=f"/settings?saved=1{query}", status_code=303)
+
+    @app.post("/control/start")
+    def control_start():
+        controller.start_system()
+        return RedirectResponse(url="/", status_code=303)
+
+    @app.post("/control/stop")
+    def control_stop():
+        controller.stop_system()
+        return RedirectResponse(url="/", status_code=303)
+
+    @app.post("/control/restart")
+    def control_restart():
+        controller.restart_system()
+        return RedirectResponse(url="/settings", status_code=303)
+
+    @app.post("/control/run-once")
+    def control_run_once():
+        controller.run_once_now()
+        return RedirectResponse(url="/", status_code=303)
+
+    @app.post("/control/open-dashboard")
+    def control_open_dashboard():
+        controller.open_dashboard()
+        return RedirectResponse(url="/", status_code=303)
+
+    @app.post("/control/send-telegram-test")
+    def control_send_telegram_test():
+        app_builder().send_telegram_test_message(source="settings-ui")
+        return RedirectResponse(url="/settings?saved=1", status_code=303)
 
     return app
 
 
-def _style_block() -> str:
-    return (
-        "<style>"
-        "body{font-family:Arial,sans-serif;margin:24px;}"
-        "table{border-collapse:collapse;width:100%;margin-bottom:24px;}"
-        "th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;vertical-align:top;}"
-        "pre{white-space:pre-wrap;background:#f7f7f7;padding:12px;margin:0;}"
-        "h1,h2{margin-top:24px;}"
-        ".badge{display:inline-block;padding:2px 8px;border-radius:999px;background:#eee;font-size:12px;}"
-        "form.filter-grid{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:8px;margin:16px 0 24px;}"
-        "form.filter-grid input{padding:6px;}"
-        "form.filter-grid button{padding:6px 12px;}"
-        "</style>"
-    )
+def _default_app_builder():
+    from doctrine_engine.product.service import DoctrineProductApp
+
+    return DoctrineProductApp()
 
 
-def _filter_form(
-    *,
-    ticker: str | None,
-    signal: str | None,
-    setup_state: str | None,
-    micro_state: str | None,
-    alert_state: str | None,
-    telegram_status: str | None,
-) -> str:
-    fields = {
-        "ticker": ticker or "",
-        "signal": signal or "",
-        "setup_state": setup_state or "",
-        "micro_state": micro_state or "",
-        "alert_state": alert_state or "",
-        "telegram_status": telegram_status or "",
-    }
-    parts = ["<form class='filter-grid' method='get'>"]
-    for name, value in fields.items():
-        parts.append(
-            f"<label>{escape(name)}<input type='text' name='{escape(name)}' value='{escape(value)}' /></label>"
+def _setup_redirect(
+    request: Request,
+    operator_settings_builder: Callable[[], dict[str, Any]],
+    enforce_setup: bool,
+) -> RedirectResponse | None:
+    if not enforce_setup:
+        return None
+    settings_view = operator_settings_builder()
+    if settings_view["setup_complete"]:
+        return None
+    if request.url.path.startswith("/setup"):
+        return None
+    return RedirectResponse(url="/setup", status_code=303)
+
+
+def _status_payload(
+    state_store: OperationalStateStore,
+    controller: RuntimeController,
+    operator_settings_builder: Callable[[], dict[str, Any]],
+) -> dict[str, Any]:
+    operator_settings = operator_settings_builder()
+    health = state_store.health_snapshot()
+    latest_known_at = health.get("latest_known_at")
+    latest_known_age_minutes = None
+    if latest_known_at:
+        latest_known_age_minutes = int(
+            (datetime.now(timezone.utc) - datetime.fromisoformat(str(latest_known_at))).total_seconds() // 60
         )
-    parts.append("<button type='submit'>Filter</button>")
-    parts.append("<a href='/'><button type='button'>Reset</button></a>")
-    parts.append("</form>")
-    return "".join(parts)
+    latest_transport = state_store.latest_telegram_alert_event()
+    latest_test = state_store.latest_operator_event("TELEGRAM_TEST_SEND")
+    telegram_last = latest_transport
+    if latest_test and (
+        telegram_last is None
+        or datetime.fromisoformat(latest_test["created_at"]) > datetime.fromisoformat(str(telegram_last["created_at"]))
+    ):
+        telegram_last = latest_test
+    return {
+        "runtime": controller.status_snapshot(),
+        "health": health,
+        "operator_settings": operator_settings,
+        "ops_store_path": str(state_store.path),
+        "latest_known_at": latest_known_at,
+        "latest_known_age_minutes": latest_known_age_minutes,
+        "latest_transport": telegram_last,
+    }
 
 
-def _badge(value: object) -> str:
-    return f"<span class='badge'>{escape(str(value))}</span>"
+def _base_context(
+    request: Request,
+    *,
+    page_title: str,
+    status_payload: dict[str, Any],
+    **extra: Any,
+) -> dict[str, Any]:
+    return {
+        "request": request,
+        "page_title": page_title,
+        "status": status_payload,
+        "now": datetime.now(timezone.utc).isoformat(),
+        **extra,
+    }
 
 
-def _table(rows: list[dict], *, columns: list[str]) -> str:
-    if not rows:
-        return "<p>No data.</p>"
-    parts = ["<table><thead><tr>"]
-    parts.extend(f"<th>{escape(column)}</th>" for column in columns)
-    parts.append("</tr></thead><tbody>")
-    for row in rows:
-        parts.append("<tr>")
-        parts.extend(f"<td>{escape(str(row.get(column, '')))}</td>" for column in columns)
-        parts.append("</tr>")
-    parts.append("</tbody></table>")
-    return "".join(parts)
+def _settings_payload_from_form(form: Any) -> dict[str, Any]:
+    return {
+        "paper_trading_mode": True,
+        "database_url": form.get("database_url", ""),
+        "polygon_api_key": form.get("polygon_api_key", ""),
+        "telegram_enabled": form.get("telegram_enabled") == "on",
+        "telegram_bot_token": form.get("telegram_bot_token", ""),
+        "telegram_chat_id": form.get("telegram_chat_id", ""),
+        "run_interval_seconds": form.get("run_interval_seconds", "900"),
+        "auto_start_runtime": form.get("auto_start_runtime") == "on",
+        "delayed_data_wording_mode": form.get("delayed_data_wording_mode", "standard"),
+        "operator_state_db_path": form.get("operator_state_db_path", ""),
+    }
 
 
-def _symbol_table(rows: list[dict]) -> str:
-    if not rows:
-        return "<p>No data.</p>"
-    parts = [
-        "<table><thead><tr>",
-        "<th>ticker</th><th>status</th><th>stage_reached</th><th>signal</th>"
-        "<th>ranking_tier</th><th>alert_state</th><th>error_message</th>",
-        "</tr></thead><tbody>",
-    ]
-    for row in rows:
-        ticker = str(row.get("ticker", "") or "")
-        parts.append("<tr>")
-        parts.append(f"<td><a href='/symbols/{escape(ticker)}'>{escape(ticker)}</a></td>")
-        parts.append(f"<td>{_badge(row.get('status', ''))}</td>")
-        parts.append(f"<td>{escape(str(row.get('stage_reached', '') or ''))}</td>")
-        parts.append(f"<td>{_badge(row.get('signal', '') or '')}</td>")
-        parts.append(f"<td>{_badge(row.get('ranking_tier', '') or '')}</td>")
-        parts.append(f"<td>{_badge(row.get('alert_state', '') or '')}</td>")
-        parts.append(f"<td>{escape(str(row.get('error_message', '') or ''))}</td>")
-        parts.append("</tr>")
-    parts.append("</tbody></table>")
-    return "".join(parts)
+def _latest_symbol_signal(state_store: OperationalStateStore, ticker: str) -> str | None:
+    rows = state_store.latest_run_symbols(ticker=ticker)
+    return rows[0]["signal"] if rows else None
 
 
-def _alert_table(rows: list[dict]) -> str:
-    if not rows:
-        return "<p>No alerts.</p>"
-    parts = [
-        "<table><thead><tr>",
-        "<th>Created At</th><th>Ticker</th><th>Alert State</th><th>Suppression Reason</th>"
-        "<th>Setup State</th><th>Entry Type</th><th>Signal Time</th><th>Known At</th>"
-        "<th>Market Regime</th><th>Sector Regime</th><th>Event Risk</th>"
-        "<th>Micro State</th><th>Micro Present</th><th>Micro Trigger</th>"
-        "<th>Micro Used for Confirmation</th><th>Telegram Status</th>"
-        "<th>Telegram Error</th><th>Operator Summary</th><th>Rendered Preview</th>",
-        "</tr></thead><tbody>",
-    ]
-    for row in rows:
-        micro_present_raw = row.get("micro_present")
-        micro_used_raw = row.get("micro_used_for_confirmation")
-        ticker = str(row.get("ticker", "") or "")
-        parts.append("<tr>")
-        parts.append(f"<td>{escape(str(row.get('created_at', '')))}</td>")
-        parts.append(f"<td><a href='/symbols/{escape(ticker)}'>{escape(ticker)}</a></td>")
-        parts.append(f"<td>{_badge(row.get('alert_state', '') or '')}</td>")
-        parts.append(f"<td>{escape(str(row.get('suppression_reason', '') or ''))}</td>")
-        parts.append(f"<td>{_badge(row.get('setup_state', '') or '')}</td>")
-        parts.append(f"<td>{_badge(row.get('entry_type', '') or '')}</td>")
-        parts.append(f"<td>{escape(str(row.get('signal_timestamp', '') or ''))}</td>")
-        parts.append(f"<td>{escape(str(row.get('known_at', '') or ''))}</td>")
-        parts.append(f"<td>{escape(str(row.get('market_regime', '') or ''))}</td>")
-        parts.append(f"<td>{escape(str(row.get('sector_regime', '') or ''))}</td>")
-        parts.append(f"<td>{escape(str(row.get('event_risk_class', '') or ''))}</td>")
-        parts.append(f"<td>{escape(str(row.get('micro_state', '') or ''))}</td>")
-        parts.append(f"<td>{escape(str(bool(micro_present_raw)) if micro_present_raw is not None else '')}</td>")
-        parts.append(f"<td>{escape(str(row.get('micro_trigger_state', '') or ''))}</td>")
-        parts.append(f"<td>{escape(str(bool(micro_used_raw)) if micro_used_raw is not None else '')}</td>")
-        parts.append(f"<td>{_badge(row.get('telegram_status', '') or '')}</td>")
-        parts.append(f"<td>{escape(str(row.get('telegram_error', '') or ''))}</td>")
-        parts.append(f"<td><pre>{escape(str(row.get('operator_summary', '') or ''))}</pre></td>")
-        parts.append(f"<td><pre>{escape(str(row.get('rendered_text', '') or ''))}</pre></td>")
-        parts.append("</tr>")
-    parts.append("</tbody></table>")
-    return "".join(parts)
-
-
-app = create_operator_app(OperationalStateStore(get_settings().operator_state_db_path))
+app = create_operator_app(OperationalStateStore(get_settings().operator_state_db_path), enforce_setup=True)
 
 
 __all__ = ["app", "create_operator_app"]

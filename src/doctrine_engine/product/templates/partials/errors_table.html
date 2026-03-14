@@ -1,0 +1,24 @@
+{% if recent_errors %}
+<table>
+  <thead>
+    <tr>
+      <th>Created</th>
+      <th>Ticker</th>
+      <th>Stage</th>
+      <th>Error</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in recent_errors %}
+    <tr>
+      <td>{{ row.created_at }}</td>
+      <td>{{ row.ticker or "SYSTEM" }}</td>
+      <td>{{ row.stage }}</td>
+      <td>{{ row.error_message }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No recent errors.</p>
+{% endif %}

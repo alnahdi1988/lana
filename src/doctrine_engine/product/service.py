@@ -26,6 +26,7 @@ from doctrine_engine.product.adapters import (
     SqlitePriorAlertStateLoader,
 )
 from doctrine_engine.product.clients import PolygonClient, TelegramSendResult, TelegramTransport
+from doctrine_engine.product.operator_config import build_operator_settings_view
 from doctrine_engine.product.state import OperationalStateStore
 from doctrine_engine.product.sync import PolygonSyncService, SyncResult
 from doctrine_engine.product.web import create_operator_app
@@ -164,7 +165,9 @@ class DoctrineProductApp:
         if self.polygon_client is None and self.runner_pipeline_factory is RunnerPipeline:
             raise ValueError("Polygon API configuration is required to build the default runner pipeline.")
         workflow_wrapper = RecordingAlertWorkflow(AlertWorkflow(AlertWorkflowConfig(cooldown_minutes=config.alert_cooldown_minutes)))
-        renderer_wrapper = RecordingTelegramRenderer(TelegramRenderer())
+        renderer_wrapper = RecordingTelegramRenderer(
+            TelegramRenderer(delayed_data_wording_mode=getattr(self.settings, "delayed_data_wording_mode", "standard"))
+        )
         runner = self.runner_pipeline_factory(
             universe_context_loader=DbUniverseContextLoader(self.session_factory),
             market_data_loader=DbMarketDataLoader(self.session_factory, self.settings.phase2_history_window_bars),
@@ -205,7 +208,9 @@ class DoctrineProductApp:
             rendered_text = renderer_wrapper.rendered_text_by_fingerprint.get(fingerprint)
             if record.decision_result.send:
                 if rendered_text is None:
-                    rendered_text = TelegramRenderer().render(payload).text
+                    rendered_text = TelegramRenderer(
+                        delayed_data_wording_mode=getattr(self.settings, "delayed_data_wording_mode", "standard")
+                    ).render(payload).text
                 transport_result = self.telegram_transport.send_message(rendered_text)
             else:
                 transport_result = TelegramSendResult(
@@ -269,8 +274,48 @@ class DoctrineProductApp:
                 LOGGER.exception("Continuous runner iteration failed.")
             time.sleep(interval_seconds)
 
+    def send_telegram_test_message(self, *, source: str) -> TelegramSendResult:
+        timestamp = datetime.now(timezone.utc).isoformat()
+        message = "\n".join(
+            [
+                "UAT TEST | Doctrine Operator",
+                f"Source: {source}",
+                f"Sent At: {timestamp}",
+                "This is an operator connectivity test. It is not a trading alert.",
+            ]
+        )
+        result = self.telegram_transport.send_message(message)
+        self.state_store.record_operator_event(
+            event_type="TELEGRAM_TEST_SEND",
+            status=result.status,
+            detail=result.error_message,
+            metadata={
+                "source": source,
+                "message": message,
+                "message_id": result.message_id,
+                "sent_at": result.sent_at.isoformat() if result.sent_at else None,
+            },
+        )
+        if result.status == "FAILED":
+            self.state_store.record_error(
+                run_id=None,
+                symbol_id=None,
+                ticker=None,
+                stage="TELEGRAM_TEST_SEND",
+                error_message=result.error_message or "Telegram test send failed.",
+            )
+        return result
+
     def create_operator_app(self):
-        return create_operator_app(self.state_store)
+        from doctrine_engine.product.control import RuntimeController
+
+        return create_operator_app(
+            self.state_store,
+            controller=RuntimeController(),
+            app_builder=lambda: DoctrineProductApp(),
+            operator_settings_builder=lambda: build_operator_settings_view(self.settings),
+            enforce_setup=isinstance(self.settings, Settings),
+        )
 
 
 def _payload_fingerprint(payload: AlertDecisionPayload) -> str:

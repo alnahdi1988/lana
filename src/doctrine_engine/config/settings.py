@@ -1,3 +1,4 @@
+import os
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
@@ -47,6 +48,9 @@ class Settings(BaseSettings):
     web_port: int = 8000
     halt_status_mode: str = "fail_open"
     log_level: str = "INFO"
+    paper_trading_mode: bool = True
+    auto_start_runtime: bool = False
+    delayed_data_wording_mode: str = "standard"
 
     @model_validator(mode="after")
     def _resolve_local_paths(self) -> "Settings":
@@ -59,4 +63,27 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    return Settings()
+    from doctrine_engine.product.operator_config import load_operator_settings_overrides
+
+    settings = Settings()
+    overrides = load_operator_settings_overrides()
+    explicit_env = {key.upper() for key in os.environ}
+    env_names = {
+        "database_url": "SDE_DATABASE_URL",
+        "polygon_api_key": "SDE_POLYGON_API_KEY",
+        "telegram_enabled": "SDE_TELEGRAM_ENABLED",
+        "telegram_bot_token": "SDE_TELEGRAM_BOT_TOKEN",
+        "telegram_chat_id": "SDE_TELEGRAM_CHAT_ID",
+        "run_interval_seconds": "SDE_RUN_INTERVAL_SECONDS",
+        "auto_start_runtime": "SDE_AUTO_START_RUNTIME",
+        "delayed_data_wording_mode": "SDE_DELAYED_DATA_WORDING_MODE",
+        "operator_state_db_path": "SDE_OPERATOR_STATE_DB_PATH",
+        "paper_trading_mode": "SDE_PAPER_TRADING_MODE",
+    }
+    for field_name, env_name in env_names.items():
+        if env_name in explicit_env:
+            continue
+        if field_name in overrides:
+            setattr(settings, field_name, overrides[field_name])
+    settings._resolve_local_paths()
+    return settings

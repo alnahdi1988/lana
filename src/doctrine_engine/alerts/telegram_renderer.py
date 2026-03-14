@@ -6,6 +6,9 @@ from doctrine_engine.alerts.models import AlertDecisionPayload, TelegramRenderRe
 
 
 class TelegramRenderer:
+    def __init__(self, *, delayed_data_wording_mode: str = "standard") -> None:
+        self.delayed_data_wording_mode = delayed_data_wording_mode
+
     def render(self, payload: AlertDecisionPayload) -> TelegramRenderResult:
         prefix = "UPDATE | " if payload.alert_state == "UPGRADED" else ""
         text = "\n".join(
@@ -37,7 +40,7 @@ class TelegramRenderer:
                     f"sector={payload.sector_regime or 'UNKNOWN'} | "
                     f"event_risk={payload.event_risk_class or 'UNKNOWN'}"
                 ),
-                "Data: Polygon delayed 15m. Operator workflow alert only, not live execution.",
+                f"Data: {self._delayed_data_line()}",
                 f"Summary: {payload.operator_summary}",
                 f"Reasons: {', '.join(payload.reason_codes)}",
             ]
@@ -46,3 +49,8 @@ class TelegramRenderer:
 
     def _decimal_text(self, value: Decimal) -> str:
         return format(value, "f")
+
+    def _delayed_data_line(self) -> str:
+        if self.delayed_data_wording_mode == "strict":
+            return "Polygon delayed 15m. Manual review only. Do not treat this as a live execution trigger."
+        return "Polygon delayed 15m. Operator workflow alert only, not live execution."

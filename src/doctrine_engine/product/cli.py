@@ -24,6 +24,10 @@ def main() -> None:
     web_parser = subparsers.add_parser("web")
     web_parser.add_argument("--host", default=settings.web_host)
     web_parser.add_argument("--port", type=int, default=settings.web_port)
+    subparsers.add_parser("launcher")
+    subparsers.add_parser("worker-engine")
+    subparsers.add_parser("worker-web")
+    subparsers.add_parser("worker-once")
     args = parser.parse_args()
 
     app = DoctrineProductApp(settings=settings)
@@ -40,6 +44,26 @@ def main() -> None:
     if args.command == "loop":
         app.run_forever(interval_seconds=args.interval_seconds)
         return
+    if args.command == "launcher":
+        from doctrine_engine.product.launcher import run_launcher
+
+        run_launcher()
+        return
+    if args.command == "worker-engine":
+        from doctrine_engine.product.control import run_engine_worker
+
+        run_engine_worker()
+        return
+    if args.command == "worker-web":
+        from doctrine_engine.product.control import run_web_worker
+
+        run_web_worker()
+        return
+    if args.command == "worker-once":
+        from doctrine_engine.product.control import run_once_worker
+
+        run_once_worker()
+        return
     uvicorn.run(app.create_operator_app(), host=args.host, port=args.port)
 
 
@@ -47,3 +71,7 @@ app = main
 
 
 __all__ = ["app", "main"]
+
+
+if __name__ == "__main__":  # pragma: no cover - direct module execution
+    main()

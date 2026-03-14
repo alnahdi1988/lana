@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-header">
+  <h2>Errors</h2>
+  <p class="muted">Recent operator-visible errors, grouped by stage and ticker.</p>
+</section>
+
+<section class="card">
+  <h2>Recent Errors</h2>
+  {% include "partials/errors_table.html" with context %}
+</section>
+
+<section class="split">
+  <section class="card">
+    <h2>Grouped by Stage</h2>
+    {% for stage, rows in errors_by_stage.items() %}
+    <h3>{{ stage }}</h3>
+    <ul class="plain-list">
+      {% for row in rows %}
+      <li>{{ row.created_at }} | {{ row.ticker or "SYSTEM" }} | {{ row.error_message }}</li>
+      {% endfor %}
+    </ul>
+    {% endfor %}
+  </section>
+
+  <section class="card">
+    <h2>Grouped by Ticker</h2>
+    {% for ticker, rows in errors_by_ticker.items() %}
+    <h3>{{ ticker }}</h3>
+    <ul class="plain-list">
+      {% for row in rows %}
+      <li>{{ row.created_at }} | {{ row.stage }} | {{ row.error_message }}</li>
+      {% endfor %}
+    </ul>
+    {% endfor %}
+  </section>
+</section>
+{% endblock %}

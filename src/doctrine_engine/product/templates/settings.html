@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-header">
+  <h2>Settings</h2>
+  <p class="muted">Operator-facing runtime configuration. Runtime-affecting changes require restart.</p>
+</section>
+
+{% if saved %}
+<div class="notice success">Settings saved.</div>
+{% endif %}
+{% if restart_required_fields %}
+<div class="notice warning">
+  Restart required for: {{ restart_required_fields | join(", ") }}
+  <form method="post" action="/control/restart"><button type="submit">Restart System</button></form>
+</div>
+{% endif %}
+
+<section class="card">
+  <h2>Effective Settings</h2>
+  <dl class="settings-list">
+    <dt>Paper Trading Mode</dt><dd>{{ operator_settings.paper_trading_mode }}</dd>
+    <dt>Signal Threshold Mode</dt><dd>{{ operator_settings.signal_send_threshold_mode }}</dd>
+    <dt>Operator Settings Path</dt><dd>{{ operator_settings.operator_settings_path }}</dd>
+    <dt>Validated At</dt><dd>{{ operator_settings.validated_at or "-" }}</dd>
+  </dl>
+</section>
+
+<section class="card">
+  <h2>Edit Settings</h2>
+  <form class="settings-form" method="post" action="/settings/save">
+    <label>Database URL<textarea name="database_url">{{ operator_settings.database_url }}</textarea></label>
+    <label>Polygon API Key<input type="text" name="polygon_api_key" value="{{ operator_settings.polygon_api_key }}"></label>
+    <label><input type="checkbox" name="telegram_enabled" {% if operator_settings.telegram_enabled %}checked{% endif %}> Telegram Enabled</label>
+    <label>Telegram Bot Token<input type="text" name="telegram_bot_token" value="{{ operator_settings.telegram_bot_token }}"></label>
+    <label>Telegram Chat ID<input type="text" name="telegram_chat_id" value="{{ operator_settings.telegram_chat_id }}"></label>
+    <label>Run Interval Seconds<input type="number" name="run_interval_seconds" value="{{ operator_settings.run_interval_seconds }}"></label>
+    <label><input type="checkbox" name="auto_start_runtime" {% if operator_settings.auto_start_runtime %}checked{% endif %}> Auto Start Runtime</label>
+    <label>Delayed Data Wording Mode
+      <select name="delayed_data_wording_mode">
+        <option value="standard" {% if operator_settings.delayed_data_wording_mode == "standard" %}selected{% endif %}>standard</option>
+        <option value="strict" {% if operator_settings.delayed_data_wording_mode == "strict" %}selected{% endif %}>strict</option>
+      </select>
+    </label>
+    <label>Operator State DB Path<input type="text" name="operator_state_db_path" value="{{ operator_settings.operator_state_db_path }}"></label>
+    <button type="submit">Save Settings</button>
+  </form>
+  <form method="post" action="/control/send-telegram-test">
+    <button type="submit" class="secondary">Send Telegram Test Message</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Validation</h2>
+  <dl class="settings-list">
+    <dt>Database</dt><dd>{{ operator_settings.validation.database.message if operator_settings.validation and operator_settings.validation.database else "-" }}</dd>
+    <dt>Ops Store</dt><dd>{{ operator_settings.validation.ops_store.message if operator_settings.validation and operator_settings.validation.ops_store else "-" }}</dd>
+    <dt>Polygon</dt><dd>{{ operator_settings.validation.polygon.message if operator_settings.validation and operator_settings.validation.polygon else "-" }}</dd>
+    <dt>Telegram</dt><dd>{{ operator_settings.validation.telegram.message if operator_settings.validation and operator_settings.validation.telegram else "-" }}</dd>
+  </dl>
+</section>
+{% endblock %}

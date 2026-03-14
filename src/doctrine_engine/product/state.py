@@ -142,6 +142,15 @@ class OperationalStateStore:
                     error_message TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS operator_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_type TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    detail TEXT,
+                    metadata_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 """
             )
             # Migrate existing alerts tables that predate micro columns
@@ -433,6 +442,16 @@ class OperationalStateStore:
         rows = self.recent_runs(limit=1)
         return rows[0] if rows else None
 
+    def run_by_id(self, run_id: uuid.UUID | str) -> dict | None:
+        return self._query_one(
+            """
+            SELECT *
+            FROM runs
+            WHERE run_id = ?
+            """,
+            (str(run_id),),
+        )
+
     def latest_run_symbols(
         self,
         *,
@@ -462,6 +481,17 @@ class OperationalStateStore:
             ORDER BY ticker ASC
             """,
             tuple(params),
+        )
+
+    def symbols_for_run(self, run_id: uuid.UUID | str) -> list[dict]:
+        return self._query_all(
+            """
+            SELECT *
+            FROM symbol_runs
+            WHERE run_id = ?
+            ORDER BY ticker ASC
+            """,
+            (str(run_id),),
         )
 
     def recent_alerts(
@@ -512,6 +542,18 @@ class OperationalStateStore:
     def recent_alerts_for_ticker(self, ticker: str, *, limit: int = 20) -> list[dict]:
         return self.recent_alerts(limit=limit, ticker=ticker)
 
+    def alerts_for_run(self, run_id: uuid.UUID | str, *, limit: int = 200) -> list[dict]:
+        return self._query_all(
+            """
+            SELECT *
+            FROM alerts
+            WHERE run_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (str(run_id), limit),
+        )
+
     def recent_errors(self, limit: int = 20) -> list[dict]:
         return self._query_all(
             """
@@ -522,6 +564,109 @@ class OperationalStateStore:
             """,
             (limit,),
         )
+
+    def errors_for_run(self, run_id: uuid.UUID | str, *, limit: int = 200) -> list[dict]:
+        return self._query_all(
+            """
+            SELECT *
+            FROM errors
+            WHERE run_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (str(run_id), limit),
+        )
+
+    def latest_known_at(self) -> str | None:
+        row = self._query_one(
+            """
+            SELECT known_at
+            FROM alerts
+            ORDER BY known_at DESC
+            LIMIT 1
+            """
+        )
+        return row["known_at"] if row is not None else None
+
+    def latest_telegram_alert_event(self) -> dict | None:
+        return self._query_one(
+            """
+            SELECT ticker, alert_state, telegram_status, telegram_message_id, telegram_error, created_at
+            FROM alerts
+            WHERE telegram_status IS NOT NULL
+            ORDER BY created_at DESC
+            LIMIT 1
+            """
+        )
+
+    def record_operator_event(
+        self,
+        *,
+        event_type: str,
+        status: str,
+        detail: str | None,
+        metadata: dict | None = None,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO operator_events (
+                    event_type,
+                    status,
+                    detail,
+                    metadata_json,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    event_type,
+                    status,
+                    detail,
+                    json.dumps(metadata or {}),
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+
+    def recent_operator_events(
+        self,
+        *,
+        event_type: str | None = None,
+        limit: int = 20,
+    ) -> list[dict]:
+        params: list[object] = []
+        where = ""
+        if event_type:
+            where = "WHERE event_type = ?"
+            params.append(event_type)
+        params.append(limit)
+        rows = self._query_all(
+            f"""
+            SELECT *
+            FROM operator_events
+            {where}
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            tuple(params),
+        )
+        for row in rows:
+            row["metadata"] = json.loads(row.pop("metadata_json"))
+        return rows
+
+    def latest_operator_event(self, event_type: str | None = None) -> dict | None:
+        rows = self.recent_operator_events(event_type=event_type, limit=1)
+        return rows[0] if rows else None
+
+    def grouped_recent_errors(self, limit: int = 100) -> dict[str, dict[str, list[dict]]]:
+        rows = self.recent_errors(limit=limit)
+        by_stage: dict[str, list[dict]] = {}
+        by_ticker: dict[str, list[dict]] = {}
+        for row in rows:
+            stage = str(row.get("stage") or "UNKNOWN")
+            ticker = str(row.get("ticker") or "SYSTEM")
+            by_stage.setdefault(stage, []).append(row)
+            by_ticker.setdefault(ticker, []).append(row)
+        return {"by_stage": by_stage, "by_ticker": by_ticker}
 
     def health_snapshot(self) -> dict:
         latest = self.latest_run()
@@ -537,6 +682,9 @@ class OperationalStateStore:
         return {
             "latest_run": latest,
             "last_successful_run_time": last_success["finished_at"] if last_success is not None else None,
+            "latest_known_at": self.latest_known_at(),
+            "latest_telegram_alert_event": self.latest_telegram_alert_event(),
+            "latest_operator_telegram_test": self.latest_operator_event("TELEGRAM_TEST_SEND"),
         }
 
     def _record_error_sql(

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-header">
+  <h2>Run Detail</h2>
+  <p class="muted">Run {{ run.run_id }}</p>
+</section>
+
+<section class="card">
+  <h2>Run Summary</h2>
+  {% include "partials/run_table.html" with context %}
+</section>
+
+<section class="card">
+  <h2>Symbol Outcomes</h2>
+  {% set latest_symbols = symbols %}
+  {% include "partials/symbols_table.html" %}
+</section>
+
+<section class="card">
+  <h2>Alerts</h2>
+  {% include "partials/alerts_table.html" with context %}
+</section>
+
+<section class="card">
+  <h2>Errors</h2>
+  {% set recent_errors = errors %}
+  {% include "partials/errors_table.html" %}
+</section>
+{% endblock %}

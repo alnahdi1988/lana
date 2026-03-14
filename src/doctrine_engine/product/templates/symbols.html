@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-header">
+  <h2>Symbols</h2>
+  <p class="muted">Latest symbol outcomes from the most recent run.</p>
+</section>
+
+<form class="filter-grid compact" method="get" action="/symbols">
+  <label>Ticker<input type="text" name="ticker" value="{{ filters.ticker }}"></label>
+  <label>Signal<input type="text" name="signal" value="{{ filters.signal }}"></label>
+  <label>Alert State<input type="text" name="alert_state" value="{{ filters.alert_state }}"></label>
+  <button type="submit">Filter</button>
+  <a class="button secondary" href="/symbols">Reset</a>
+</form>
+
+<section class="card">
+  {% include "partials/symbols_table.html" with context %}
+</section>
+{% endblock %}

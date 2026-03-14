@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-header">
+  <h2>First-Run Setup</h2>
+  <p class="muted">Capture local operator settings once. No terminal or `.env` editing required for normal use.</p>
+</section>
+
+{% if saved %}
+<div class="notice success">Setup saved.</div>
+{% endif %}
+{% if setup_complete %}
+<div class="notice success">Setup is complete.</div>
+{% endif %}
+
+<section class="card">
+  <h2>Setup Form</h2>
+  <form class="settings-form" method="post" action="/setup/save">
+    <label>Database URL<textarea name="database_url">{{ operator_settings.database_url }}</textarea></label>
+    <label>Polygon API Key<input type="text" name="polygon_api_key" value="{{ operator_settings.polygon_api_key }}"></label>
+    <label><input type="checkbox" name="telegram_enabled" {% if operator_settings.telegram_enabled %}checked{% endif %}> Telegram Enabled</label>
+    <label>Telegram Bot Token<input type="text" name="telegram_bot_token" value="{{ operator_settings.telegram_bot_token }}"></label>
+    <label>Telegram Chat ID<input type="text" name="telegram_chat_id" value="{{ operator_settings.telegram_chat_id }}"></label>
+    <label>Run Interval Seconds<input type="number" name="run_interval_seconds" value="{{ operator_settings.run_interval_seconds }}"></label>
+    <label><input type="checkbox" name="auto_start_runtime" {% if operator_settings.auto_start_runtime %}checked{% endif %}> Auto Start Runtime</label>
+    <label>Delayed Data Wording Mode
+      <select name="delayed_data_wording_mode">
+        <option value="standard" {% if operator_settings.delayed_data_wording_mode == "standard" %}selected{% endif %}>standard</option>
+        <option value="strict" {% if operator_settings.delayed_data_wording_mode == "strict" %}selected{% endif %}>strict</option>
+      </select>
+    </label>
+    <label>Operator State DB Path<input type="text" name="operator_state_db_path" value="{{ operator_settings.operator_state_db_path }}"></label>
+    <button type="submit">Validate and Save</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Latest Validation</h2>
+  <dl class="settings-list">
+    <dt>Database</dt><dd>{{ validation.database.message if validation and validation.database else "-" }}</dd>
+    <dt>Ops Store</dt><dd>{{ validation.ops_store.message if validation and validation.ops_store else "-" }}</dd>
+    <dt>Polygon</dt><dd>{{ validation.polygon.message if validation and validation.polygon else "-" }}</dd>
+    <dt>Telegram</dt><dd>{{ validation.telegram.message if validation and validation.telegram else "-" }}</dd>
+  </dl>
+</section>
+{% endblock %}

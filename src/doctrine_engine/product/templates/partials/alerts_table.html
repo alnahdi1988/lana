@@ -1,0 +1,58 @@
+{% if alerts %}
+<table>
+  <thead>
+    <tr>
+      <th>Created</th>
+      <th>Ticker</th>
+      <th>Alert State</th>
+      <th>Suppression</th>
+      <th>Setup</th>
+      <th>Entry</th>
+      <th>Signal Time</th>
+      <th>Known At</th>
+      <th>Reason Codes</th>
+      <th>Regime</th>
+      <th>Sector</th>
+      <th>Event Risk</th>
+      <th>Micro</th>
+      <th>Micro Present</th>
+      <th>Micro Trigger</th>
+      <th>Micro Used</th>
+      <th>Telegram Status</th>
+      <th>Message ID</th>
+      <th>Telegram Error</th>
+      <th>Summary</th>
+      <th>Preview</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in alerts %}
+    <tr>
+      <td>{{ row.created_at }}</td>
+      <td><a href="/symbols/{{ row.ticker }}">{{ row.ticker }}</a></td>
+      <td><span class="badge">{{ row.alert_state }}</span></td>
+      <td>{{ row.suppression_reason or "-" }}</td>
+      <td>{{ row.setup_state }}</td>
+      <td>{{ row.entry_type }}</td>
+      <td>{{ row.signal_timestamp }}</td>
+      <td>{{ row.known_at }}</td>
+      <td>{{ row.reason_codes_json }}</td>
+      <td>{{ row.market_regime or "-" }}</td>
+      <td>{{ row.sector_regime or "-" }}</td>
+      <td>{{ row.event_risk_class or "-" }}</td>
+      <td>{{ row.micro_state or "-" }}</td>
+      <td>{{ "True" if row.micro_present else "False" }}</td>
+      <td>{{ row.micro_trigger_state or "-" }}</td>
+      <td>{{ "True" if row.micro_used_for_confirmation else "False" }}</td>
+      <td><span class="badge">{{ row.telegram_status }}</span></td>
+      <td>{{ row.telegram_message_id or "-" }}</td>
+      <td>{{ row.telegram_error or "-" }}</td>
+      <td><pre>{{ row.operator_summary }}</pre></td>
+      <td><pre>{{ row.rendered_text or "-" }}</pre></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No alerts.</p>
+{% endif %}

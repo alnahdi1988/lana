@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-header">
+  <h2>Overview</h2>
+  <p class="muted">Latest runs, symbol outcomes, alerts, and recent errors.</p>
+</section>
+
+<form class="filter-grid" method="get" action="/">
+  <label>Ticker<input type="text" name="ticker" value="{{ filters.ticker }}"></label>
+  <label>Signal<input type="text" name="signal" value="{{ filters.signal }}"></label>
+  <label>Setup State<input type="text" name="setup_state" value="{{ filters.setup_state }}"></label>
+  <label>Alert State<input type="text" name="alert_state" value="{{ filters.alert_state }}"></label>
+  <label>Micro State<input type="text" name="micro_state" value="{{ filters.micro_state }}"></label>
+  <label>Telegram Status<input type="text" name="telegram_status" value="{{ filters.telegram_status }}"></label>
+  <button type="submit">Filter</button>
+  <a class="button secondary" href="/">Reset</a>
+</form>
+
+<section class="card">
+  <h2>Latest Run</h2>
+  {% if latest_run %}
+  {% include "partials/run_table.html" %}
+  {% else %}
+  <p class="muted">No data.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Recent Runs</h2>
+  {% set runs = recent_runs %}
+  {% include "partials/runs_table.html" %}
+</section>
+
+<section class="card">
+  <h2>Latest Run Symbols</h2>
+  {% include "partials/symbols_table.html" with context %}
+</section>
+
+<section class="card">
+  <h2>Generated Alerts</h2>
+  {% set alerts = generated_alerts %}
+  {% include "partials/alerts_table.html" %}
+</section>
+
+<section class="card">
+  <h2>Suppressed Alerts</h2>
+  {% set alerts = suppressed_alerts %}
+  {% include "partials/alerts_table.html" %}
+</section>
+
+<section class="card">
+  <h2>Recent Errors</h2>
+  {% include "partials/errors_table.html" with context %}
+</section>
+{% endblock %}

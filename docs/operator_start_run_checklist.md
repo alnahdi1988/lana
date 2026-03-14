@@ -1,74 +1,78 @@
 # Operator Start / Run Checklist
 
-## Start once
+## Open the app
 
-```powershell
-doctrine once
-```
+1. Double-click:
+   - `Doctrine Operator.vbs`
+2. Wait for the launcher window to appear.
 
-## Start continuous mode
+## Start the system
 
-```powershell
-doctrine loop
-```
+1. In the launcher, click `Start System`.
+2. Confirm:
+   - `Engine State = RUNNING`
+   - `Web State = RUNNING`
 
-Optional interval override:
+## Open the dashboard
 
-```powershell
-doctrine loop --interval-seconds 900
-```
+1. In the launcher, click `Open Dashboard`.
+2. The browser opens the local operator console automatically.
 
-## Open the web console
+## First-run setup
 
-```powershell
-doctrine web
-```
+If setup is required, the dashboard opens the `Setup` page.
 
-Default local URL:
-- `http://127.0.0.1:8000/`
+Fill in:
+- database URL
+- Polygon API key
+- Telegram enabled on/off
+- Telegram bot token
+- Telegram chat ID
+- run interval
 
-## Check the latest run
+Then click `Validate and Save`.
 
-1. Open the overview page.
-2. Verify:
-   - latest run status
-   - total symbols
-   - failed symbols
-   - sendable alerts
-   - Telegram sent / failed
+Success means:
+- database connectivity validated
+- ops-store path validated
+- Telegram test message sent if Telegram is enabled
 
-## Read Telegram alert states
+## Run once now
 
-- `NEW`: fresh operator alert
-- `UPGRADED`: materially improved existing alert
-- `SUPPRESSED`: not actionable
-- `DUPLICATE_BLOCKED`: duplicate of an already-seen alert
-- `COOLDOWN_BLOCKED`: same alert family inside cooldown
+Use either:
+- launcher `Run Once Now`
+- dashboard `Run Once Now`
 
-## Read micro-state
+Then confirm on the dashboard:
+- latest run status
+- processed / skipped / failed counts
+- alerts and suppressed alerts
+- recent errors
 
-- `NOT_REQUESTED`: 5M was not part of this run path
-- `REQUESTED_UNAVAILABLE`: 5M was requested but not available
-- `AVAILABLE_NOT_USED`: 5M existed but did not gate confirmation
-- `AVAILABLE_USED`: 5M existed and gated confirmation
+## Daily operator checks
 
-## When to ignore a signal
+1. Open the launcher.
+2. Confirm engine and web are running.
+3. Open the dashboard.
+4. Review:
+   - latest run
+   - generated alerts
+   - suppressed alerts
+   - Telegram status
+   - latest `known_at`
+   - recent errors
 
-- `signal = NONE`
-- alert state is suppressed / duplicate / cooldown blocked
-- event risk is blocked
-- alert is materially stale relative to `known_at`
+## Telegram test
 
-## When a signal is potentially actionable
+From the dashboard `Settings` page:
+1. Click `Send Telegram Test Message`.
+2. Confirm a clearly labeled test message arrives.
+3. Confirm the dashboard shows the latest transport result.
 
-- `signal = LONG`
-- alert workflow says sendable
-- event risk is clear
-- entry / invalidation / TP fields are present and readable
-- delayed-data context is acceptable for manual review
+## Stop or restart
 
-## Where to check failures
+Use the launcher buttons:
+- `Stop System`
+- `Restart System`
 
-- Web overview: latest run + recent errors
-- Web alert history: Telegram status and transport errors
-- Local SQLite ops state: `.doctrine/operations.db`
+The dashboard remains available even when the engine loop is stopped.

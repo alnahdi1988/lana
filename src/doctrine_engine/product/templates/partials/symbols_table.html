@@ -1,0 +1,40 @@
+{% if latest_symbols or symbols %}
+{% set rows = latest_symbols if latest_symbols is defined and latest_symbols else symbols %}
+<table>
+  <thead>
+    <tr>
+      <th>Ticker</th>
+      <th>Status</th>
+      <th>Stage</th>
+      <th>Signal</th>
+      <th>Ranking</th>
+      <th>Alert State</th>
+      <th>Setup State</th>
+      <th>Reason Codes</th>
+      <th>Micro State</th>
+      <th>Telegram Status</th>
+      <th>Error</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+    {% set latest_alert = row.latest_alert if row.latest_alert is defined else None %}
+    <tr>
+      <td><a href="/symbols/{{ row.ticker }}">{{ row.ticker }}</a></td>
+      <td><span class="badge">{{ row.status }}</span></td>
+      <td>{{ row.stage_reached }}</td>
+      <td><span class="badge">{{ row.signal or "-" }}</span></td>
+      <td>{{ row.ranking_tier or "-" }}</td>
+      <td><span class="badge">{{ row.alert_state or "-" }}</span></td>
+      <td>{{ latest_alert.setup_state if latest_alert else "-" }}</td>
+      <td>{{ latest_alert.reason_codes_json if latest_alert else "-" }}</td>
+      <td>{{ latest_alert.micro_state if latest_alert else "-" }}</td>
+      <td>{{ latest_alert.telegram_status if latest_alert else "-" }}</td>
+      <td>{{ row.error_message or "-" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No symbol data.</p>
+{% endif %}

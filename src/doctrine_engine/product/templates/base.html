@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title }} | Doctrine Operator</title>
+  <link rel="stylesheet" href="{{ request.url_for('static', path='operator.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Doctrine Operator</h1>
+      <p class="muted">Local operator console for manual paper trading.</p>
+    </div>
+    <div class="topbar-actions">
+      <form method="post" action="/control/start"><button type="submit">Start System</button></form>
+      <form method="post" action="/control/stop"><button type="submit" class="secondary">Stop System</button></form>
+      <form method="post" action="/control/run-once"><button type="submit" class="secondary">Run Once Now</button></form>
+    </div>
+  </header>
+
+  <nav class="nav">
+    <a href="/">Overview</a>
+    <a href="/runs">Runs</a>
+    <a href="/symbols">Symbols</a>
+    <a href="/alerts">Alerts</a>
+    <a href="/errors">Errors</a>
+    <a href="/settings">Settings</a>
+  </nav>
+
+  <section class="status-grid">
+    <article class="card">
+      <h2>Runtime</h2>
+      <dl>
+        <dt>Engine</dt><dd><span class="badge">{{ status.runtime.engine.state }}</span></dd>
+        <dt>Web</dt><dd><span class="badge">{{ status.runtime.web.state }}</span></dd>
+        <dt>Run Once</dt><dd><span class="badge">{{ status.runtime.run_once.state }}</span></dd>
+        <dt>Setup Complete</dt><dd>{{ status.runtime.setup_complete }}</dd>
+      </dl>
+    </article>
+    <article class="card">
+      <h2>Latest Run</h2>
+      {% if status.health.latest_run %}
+      <dl>
+        <dt>Status</dt><dd><span class="badge">{{ status.health.latest_run.run_status }}</span></dd>
+        <dt>Finished</dt><dd>{{ status.health.latest_run.finished_at }}</dd>
+        <dt>Processed</dt><dd>{{ status.health.latest_run.total_symbols }}</dd>
+        <dt>Skipped</dt><dd>{{ status.health.latest_run.skipped_symbols }}</dd>
+        <dt>Failed</dt><dd>{{ status.health.latest_run.failed_symbols }}</dd>
+      </dl>
+      {% else %}
+      <p class="muted">No runs recorded.</p>
+      {% endif %}
+    </article>
+    <article class="card">
+      <h2>Transport</h2>
+      <dl>
+        <dt>Telegram Enabled</dt><dd>{{ status.operator_settings.telegram_enabled }}</dd>
+        <dt>Chat Configured</dt><dd>{{ "Yes" if status.operator_settings.telegram_chat_id else "No" }}</dd>
+        <dt>Latest Activity</dt><dd>{{ status.latest_transport.status if status.latest_transport else "None" }}</dd>
+        <dt>Latest Error</dt><dd>{{ status.latest_transport.detail if status.latest_transport and status.latest_transport.detail else status.latest_transport.telegram_error if status.latest_transport else "-" }}</dd>
+      </dl>
+    </article>
+    <article class="card">
+      <h2>Freshness</h2>
+      <dl>
+        <dt>Latest Known At</dt><dd>{{ status.latest_known_at or "None" }}</dd>
+        <dt>Age (min)</dt><dd>{{ status.latest_known_age_minutes if status.latest_known_age_minutes is not none else "-" }}</dd>
+        <dt>Ops Store</dt><dd>{{ status.ops_store_path }}</dd>
+        <dt>DB Validation</dt><dd>{{ status.operator_settings.validation.database.message if status.operator_settings.validation and status.operator_settings.validation.database else "-" }}</dd>
+      </dl>
+    </article>
+  </section>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
