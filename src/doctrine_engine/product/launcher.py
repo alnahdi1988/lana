@@ -3,14 +3,13 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
-from doctrine_engine.config.settings import get_settings
 from doctrine_engine.product.control import RuntimeController
 
 
 class DoctrineOperatorLauncher:
     def __init__(self) -> None:
         self.controller = RuntimeController()
-        self.settings = get_settings()
+        self.settings = self.controller.settings
         self.root = tk.Tk()
         self.root.title("Doctrine Operator")
         self.root.geometry("520x360")

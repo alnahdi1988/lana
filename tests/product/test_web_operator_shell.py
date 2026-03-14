@@ -169,3 +169,57 @@ def test_settings_page_and_telegram_test_send_route(monkeypatch, tmp_path):
     response = client.post("/control/send-telegram-test", follow_redirects=False)
     assert response.status_code == 303
     assert called == ["settings-ui"]
+
+
+def test_click_only_runtime_skips_setup_when_effective_runtime_is_already_valid(monkeypatch, tmp_path):
+    _configure_operator_paths(monkeypatch, tmp_path)
+    current_settings = SimpleNamespace(
+        paper_trading_mode=True,
+        database_url="sqlite://",
+        polygon_api_key="polygon-key",
+        telegram_enabled=True,
+        telegram_bot_token="token",
+        telegram_chat_id="chat",
+        run_interval_seconds=900,
+        auto_start_runtime=False,
+        delayed_data_wording_mode="standard",
+        operator_state_db_path=str(tmp_path / "ops.db"),
+    )
+    monkeypatch.setattr(
+        "doctrine_engine.product.web.validate_operator_settings",
+        lambda payload, send_telegram_test, telegram_label: operator_config.OperatorSettingsValidation(
+            ok=True,
+            details={
+                "database": {"ok": True, "message": "db ok"},
+                "ops_store": {"ok": True, "message": "ops ok"},
+                "polygon": {"ok": True, "message": "polygon ok"},
+                "telegram": {
+                    "ok": True,
+                    "message": "telegram configured",
+                    "status": "CONFIGURED",
+                    "message_id": None,
+                },
+            },
+        ),
+    )
+
+    store = OperationalStateStore(str(tmp_path / "ops.db"))
+    app = create_operator_app(
+        store,
+        controller=_StubController(),
+        app_builder=lambda: SimpleNamespace(state_store=store, send_telegram_test_message=lambda source: None),
+        operator_settings_builder=lambda: operator_config.build_operator_settings_view(current_settings),
+        enforce_setup=True,
+    )
+    client = TestClient(app)
+
+    bootstrap = operator_config.bootstrap_operator_settings_from_runtime(current_settings)
+    assert bootstrap["settings"]["database_url"] == "sqlite://"
+
+    overview = client.get("/", follow_redirects=False)
+    settings_page = client.get("/settings", follow_redirects=False)
+
+    assert overview.status_code == 200
+    assert settings_page.status_code == 200
+    assert "Overview" in overview.text
+    assert 'action="/setup/save"' not in overview.text

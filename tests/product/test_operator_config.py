@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from doctrine_engine.product import operator_config
 
@@ -68,3 +69,50 @@ def test_validate_operator_settings_uses_real_sqlite_and_mocked_telegram(monkeyp
     assert result.details["database"]["ok"] is True
     assert result.details["ops_store"]["ok"] is True
     assert result.details["telegram"]["status"] == "SENT"
+
+
+def test_bootstrap_operator_settings_from_runtime_uses_effective_runtime_without_manual_setup(tmp_path, monkeypatch):
+    doctrine_home = tmp_path / ".doctrine"
+    monkeypatch.setattr(operator_config, "DOCTRINE_HOME", doctrine_home)
+    monkeypatch.setattr(operator_config, "OPERATOR_SETTINGS_PATH", doctrine_home / "operator_settings.json")
+    monkeypatch.setattr(operator_config, "DEFAULT_OPERATOR_STATE_DB_PATH", str((doctrine_home / "operations.db").resolve()))
+
+    runtime_settings = SimpleNamespace(
+        paper_trading_mode=True,
+        database_url="sqlite://",
+        polygon_api_key="polygon-key",
+        telegram_enabled=True,
+        telegram_bot_token="bot-token",
+        telegram_chat_id="chat-id",
+        run_interval_seconds=900,
+        auto_start_runtime=True,
+        delayed_data_wording_mode="standard",
+        operator_state_db_path=str(doctrine_home / "operations.db"),
+    )
+
+    monkeypatch.setattr(
+        operator_config,
+        "validate_operator_settings",
+        lambda settings_payload, send_telegram_test, telegram_label: operator_config.OperatorSettingsValidation(
+            ok=True,
+            details={
+                "database": {"ok": True, "message": "db ok"},
+                "ops_store": {"ok": True, "message": "ops ok"},
+                "polygon": {"ok": True, "message": "polygon ok"},
+                "telegram": {
+                    "ok": True,
+                    "message": "telegram configured",
+                    "status": "CONFIGURED",
+                    "message_id": None,
+                },
+            },
+        ),
+    )
+
+    document = operator_config.bootstrap_operator_settings_from_runtime(runtime_settings)
+
+    assert document["settings"]["database_url"] == "sqlite://"
+    assert document["settings"]["polygon_api_key"] == "polygon-key"
+    assert document["settings"]["telegram_enabled"] is True
+    assert operator_config.setup_is_complete(document) is True
+    assert operator_config.has_saved_operator_settings() is True

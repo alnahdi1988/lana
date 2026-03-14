@@ -85,9 +85,13 @@ def load_operator_settings_document() -> dict[str, Any]:
     }
 
 
-def load_operator_settings_overrides() -> dict[str, Any]:
+def has_saved_operator_settings() -> bool:
     path = get_operator_settings_path()
-    if not path.exists() or not path.read_text(encoding="utf-8").strip():
+    return path.exists() and bool(path.read_text(encoding="utf-8").strip())
+
+
+def load_operator_settings_overrides() -> dict[str, Any]:
+    if not has_saved_operator_settings():
         return {}
     return dict(load_operator_settings_document()["settings"])
 
@@ -153,6 +157,25 @@ def build_operator_settings_view(current_settings: Any) -> dict[str, Any]:
     settings["validation"] = document.get("meta", {}).get("validation") or {}
     settings["validated_at"] = document.get("meta", {}).get("validated_at")
     return settings
+
+
+def bootstrap_operator_settings_from_runtime(current_settings: Any) -> dict[str, Any]:
+    if has_saved_operator_settings():
+        return load_operator_settings_document()
+    payload = default_operator_settings()
+    for key in OPERATOR_MANAGED_FIELDS:
+        if hasattr(current_settings, key):
+            payload[key] = getattr(current_settings, key)
+    if not effective_settings_complete(payload):
+        return load_operator_settings_document()
+    validation = validate_operator_settings(
+        payload,
+        send_telegram_test=False,
+        telegram_label="BOOTSTRAP | Doctrine Operator",
+    )
+    if validation.ok:
+        return save_operator_settings_document(payload, validation=validation.details)
+    return load_operator_settings_document()
 
 
 def validate_operator_settings(
@@ -267,14 +290,18 @@ def _validate_telegram(
         chat_id=chat_id or None,
     )
     result = transport.send_message(label) if send_message else TelegramSendResult(
-        status="SKIPPED_DISABLED",
+        status="CONFIGURED",
         message_id=None,
-        error_message="Telegram validation send disabled.",
+        error_message=None,
         sent_at=None,
     )
     return {
-        "ok": result.status == "SENT",
-        "message": result.error_message or ("Telegram connectivity succeeded." if result.status == "SENT" else result.status),
+        "ok": result.status in {"SENT", "CONFIGURED"},
+        "message": result.error_message or (
+            "Telegram connectivity succeeded."
+            if result.status == "SENT"
+            else "Telegram credentials are configured."
+        ),
         "status": result.status,
         "message_id": result.message_id,
     }
@@ -300,9 +327,11 @@ __all__ = [
     "OPERATOR_SETTINGS_PATH",
     "OperatorSettingsValidation",
     "build_operator_settings_view",
+    "bootstrap_operator_settings_from_runtime",
     "default_operator_settings",
     "effective_settings_complete",
     "get_operator_settings_path",
+    "has_saved_operator_settings",
     "load_operator_settings_document",
     "load_operator_settings_overrides",
     "merge_operator_settings",

@@ -12,7 +12,11 @@ from pathlib import Path
 from typing import Any
 
 from doctrine_engine.config.settings import get_settings
-from doctrine_engine.product.operator_config import setup_is_complete, load_operator_settings_document
+from doctrine_engine.product.operator_config import (
+    bootstrap_operator_settings_from_runtime,
+    load_operator_settings_document,
+    setup_is_complete,
+)
 
 WINDOWS_DETACHED_FLAGS = 0
 for _name in ("DETACHED_PROCESS", "CREATE_NEW_PROCESS_GROUP", "CREATE_NO_WINDOW"):
@@ -55,6 +59,7 @@ class RuntimeController:
     def __init__(self) -> None:
         self.paths = get_runtime_paths()
         self.settings = get_settings()
+        bootstrap_operator_settings_from_runtime(self.settings)
         self.python_exe = self.paths.repo_root / ".venv" / "Scripts" / "python.exe"
         self.pythonw_exe = self.paths.repo_root / ".venv" / "Scripts" / "pythonw.exe"
 

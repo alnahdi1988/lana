@@ -26,7 +26,10 @@ from doctrine_engine.product.adapters import (
     SqlitePriorAlertStateLoader,
 )
 from doctrine_engine.product.clients import PolygonClient, TelegramSendResult, TelegramTransport
-from doctrine_engine.product.operator_config import build_operator_settings_view
+from doctrine_engine.product.operator_config import (
+    bootstrap_operator_settings_from_runtime,
+    build_operator_settings_view,
+)
 from doctrine_engine.product.state import OperationalStateStore
 from doctrine_engine.product.sync import PolygonSyncService, SyncResult
 from doctrine_engine.product.web import create_operator_app
@@ -108,6 +111,7 @@ class DoctrineProductApp:
         runner_pipeline_factory: Callable[..., RunnerPipeline] | None = None,
     ) -> None:
         self.settings = settings or get_settings()
+        bootstrap_operator_settings_from_runtime(self.settings)
         if session_factory is None:
             engine = create_engine(self.settings.database_url, future=True)
             session_factory = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
