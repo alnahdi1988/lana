@@ -2,111 +2,135 @@
 
 ## Canonical branch
 
-- Canonical local branch: `main`
-- Current remote: `origin = https://github.com/alnahdi1988/lana.git`
-- Current push command:
+- canonical branch: `main`
+- tracked remote: `origin/main`
+- remote URL: `https://github.com/alnahdi1988/lana.git`
 
-```powershell
-git -C D:\Doctrine\structure-doctrine-engine push -u origin main
-```
+## Operator startup
+
+Normal operator entrypoint:
+- [D:\Doctrine\structure-doctrine-engine\Doctrine Operator.vbs](D:/Doctrine/structure-doctrine-engine/Doctrine%20Operator.vbs)
+
+What it provides:
+- launcher window
+- start / stop / restart / run-once controls
+- dashboard open
+- no-terminal normal operation
 
 ## Runtime defaults
 
-- `DoctrineProductApp.build_runner_config()` is the owner of runtime micro defaults.
-- Frozen operator baseline defaults:
-  - `timeframes.micro = "5M"`
-  - `require_micro_confirmation = False`
-- Operator mode:
-  - delayed-data operator workflow
-  - Telegram primary surface
-  - local web console secondary surface
-  - local SQLite ops state
+Owned by `DoctrineProductApp.build_runner_config()`:
+- `timeframes.micro = "5M"`
+- `require_micro_confirmation = False`
+
+## Persistence split
+
+### PostgreSQL
+
+Doctrine and ML lifecycle persistence:
+- market data
+- features
+- signals
+- trade plans
+- outcomes
+
+### SQLite
+
+Operator-state persistence:
+- runs
+- symbol_runs
+- alerts
+- prior alert state
+- operator events
+- errors
+
+## Qualifying setup contract
+
+Implemented doctrine tracking contract:
+- `signal == LONG`
+- successful trade plan build
+- independent of Telegram sendability
+
+Suppressed qualified setups are still written to PostgreSQL doctrine tables and tracked for later labels.
 
 ## Delayed-data policy
 
-- Signals are delayed-data operator alerts, not live execution.
-- `signal_timestamp` is the triggering market event time.
-- `known_at` is the earliest time the full delayed input set was actually knowable.
-- Telegram wording must preserve:
+- `signal_timestamp` is the market event timestamp
+- `known_at` is the delayed-data timestamp at which the setup became knowable
+- the system remains an operator workflow product, not a live execution engine
 
-```text
-Data: Polygon delayed 15m. Operator workflow alert only, not live execution.
-```
+## Telegram truth
 
-## Micro-state semantics
+- Telegram is the primary alert surface
+- only workflow-sendable alerts are sent
+- suppressed / duplicate / cooldown outcomes remain fully visible in the dashboard
+- operator test sends are available from Settings and are persisted as `TELEGRAM_TEST_SEND`
 
-- `NOT_REQUESTED`
-- `REQUESTED_UNAVAILABLE`
-- `AVAILABLE_NOT_USED`
-- `AVAILABLE_USED`
+## Current live checkpoint
 
-Authoritative derivation point:
-- `SignalEngine.evaluate`
+Latest validated current-code run in SQLite:
+- `run_id = 23d65c02-6563-46c2-b786-80f4bf373e44`
+- `run_status = SUCCESS`
+- `total_symbols = 8`
+- `succeeded_symbols = 1`
+- `skipped_symbols = 7`
+- `failed_symbols = 0`
+- `generated_signals = 2`
+- `generated_trade_plans = 1`
+- `ranked_symbols = 1`
+- `sendable_alerts = 0`
 
-Downstream propagation:
-- `SignalEngineResult.extensible_context`
-- `AlertDecisionPayload`
-- Telegram rendered text
-- SQLite ops state
-- operator web UI
+Latest persisted alert row:
+- `ticker = INTC`
+- `signal = LONG`
+- `confidence = 0.7100`
+- `grade = B`
+- `setup_state = BULLISH_RECLAIM`
+- `entry_type = AGGRESSIVE`
+- `alert_state = SUPPRESSED`
+- `suppression_reason = GRADE_NOT_SENDABLE`
+- `telegram_status = NOT_SENT`
+- `micro_state = AVAILABLE_NOT_USED`
+- `micro_trigger_state = LTF_BULLISH_RECLAIM`
 
-## Provider assumptions
+Latest doctrine operator events:
+- `DOCTRINE_PERSISTENCE = OK`
+  - `signals=1 trade_plans=1 outcomes=1`
+- `OUTCOME_TRACKER = OK`
+  - `updated=0 open=2 finalized=0`
 
-- Market data: Polygon
-- Event/news/calendar input: Polygon-backed product loaders
-- Halt provider mode is configuration-driven
-- Doctrine core market/feature persistence remains in PostgreSQL
-- Operator/runtime persistence remains in local SQLite
+Latest PostgreSQL doctrine counts:
+- `signals = 2`
+- `trade_plans = 2`
+- `outcomes = 2`
 
-## Release checkpoint
+Latest PostgreSQL tracked trade:
+- `ticker = INTC`
+- `signal = LONG`
+- `setup_state = BULLISH_RECLAIM`
+- `entry_type = AGGRESSIVE`
+- `entry_zone = 45.5550 - 47.1628`
+- `invalidation = 45.1200`
+- `tp1 = 47.3000`
+- `tp2 = 47.3300`
+- `evaluation_status = PENDING`
 
-- Tag: `closeout-micro-state-v1`
+## Operator surfaces
 
-## Remote status
+The dashboard is the secondary operator surface and now exposes:
+- overview
+- runs and run detail
+- symbols and symbol detail
+- alerts
+- trades
+- errors
+- settings
 
-- `origin/main` is configured and tracking locally.
-- Release tag exists locally and remotely:
-  - `closeout-micro-state-v1`
-- Verification commands:
+## Release truth
 
-```powershell
-git -C D:\Doctrine\structure-doctrine-engine remote -v
-git -C D:\Doctrine\structure-doctrine-engine branch -vv
-git -C D:\Doctrine\structure-doctrine-engine ls-remote --tags origin closeout-micro-state-v1
-```
-
-## Current runtime checkpoint
-
-- Latest post-fix live run in `.doctrine/operations.db`:
-  - `run_status = SUCCESS`
-  - `total_symbols = 8`
-  - `succeeded_symbols = 1`
-  - `skipped_symbols = 7`
-  - `failed_symbols = 0`
-  - `generated_signals = 2`
-  - `generated_trade_plans = 1`
-  - `ranked_symbols = 1`
-
-- Representative live outcomes:
-  - `INTC`:
-    - `status = SUCCESS`
-    - `stage_reached = BUILD_ALERT_DECISION`
-    - `alert_state = SUPPRESSED`
-  - `IREN`:
-    - `status = SKIPPED`
-    - `stage_reached = BUILD_TRADE_PLAN`
-    - `error_message = Invalidation anchor cannot fall inside the entry zone.`
-
-- Latest persisted alert:
-  - `ticker = INTC`
-  - `alert_state = SUPPRESSED`
-  - `suppression_reason = GRADE_NOT_SENDABLE`
-  - `telegram_status = NOT_SENT`
-  - `micro_state = AVAILABLE_NOT_USED`
-  - `micro_trigger_state = LTF_BULLISH_RECLAIM`
-
-## Push reference
-
-```powershell
-git -C D:\Doctrine\structure-doctrine-engine push origin closeout-micro-state-v1
-```
+Current repo state is closed for manual paper-trading operation with:
+- launcher-based startup
+- Telegram operator delivery
+- FastAPI dashboard
+- SQLite operator persistence
+- PostgreSQL tracked-trade / ML lifecycle persistence

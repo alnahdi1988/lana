@@ -2,30 +2,18 @@
 
 ## Scope
 
-This validation pack records the closeout runtime proof for the current product layer.
+This validation pack records the current closure-pass runtime proof for the product layer.
 
-The validation used:
-- real `Settings()` from local `.env`
+Validation uses:
+- real local `.env` and operator settings
 - real PostgreSQL doctrine data
-- real `DbUniverseContextLoader`
-- real `DbPhase2FeatureLoader`
-- real `DbMarketDataLoader`
-- real `DbRegimeExternalInputLoader`
-- real `PolygonEventRiskInputLoader`
-- real `RegimeEngine`
-- real `EventRiskEngine`
-- real `SignalEngine`
-- real `AlertWorkflow`
-- real `TelegramRenderer`
-- real local SQLite ops-state persistence
-- real FastAPI operator web app against that persisted state
+- real SQLite operator-state data
+- real `DoctrineProductApp`
+- real Telegram transport for labeled operator test send
+- real launcher path
+- real FastAPI operator console
 
-## SOFI validation target
-
-- `ticker = SOFI`
-- `symbol_id = 319f2af7-6084-4a5b-af82-b8ca500bb891`
-
-## Runtime config proof
+## Locked runtime defaults
 
 ```json
 {
@@ -34,112 +22,31 @@ The validation used:
 }
 ```
 
-## Phase 2 proof
+## Operator-shell proof
+
+Validated entrypoint:
+- [D:\Doctrine\structure-doctrine-engine\Doctrine Operator.vbs](D:/Doctrine/structure-doctrine-engine/Doctrine%20Operator.vbs)
+
+Validated control facts:
 
 ```json
 {
-  "micro_present": true,
-  "micro_bar_timestamp_utc": "2026-03-11T23:55:00+00:00"
+  "setup_complete": true,
+  "dashboard_url": "http://127.0.0.1:8000/",
+  "engine_state": "STOPPED",
+  "web_state": "RUNNING",
+  "run_once_state": "IDLE",
+  "last_run_once_status": "SUCCESS"
 }
 ```
 
-## Signal proof
+## Latest true operator run
+
+Observed SQLite run row:
 
 ```json
 {
-  "signal": "NONE",
-  "market_regime": "RISK_OFF",
-  "sector_regime": "SECTOR_WEAK",
-  "event_risk_class": "NO_EVENT_RISK",
-  "micro_state": "AVAILABLE_NOT_USED",
-  "micro_present": true,
-  "micro_trigger_state": "LTF_BULLISH_RECLAIM",
-  "micro_used_for_confirmation": false
-}
-```
-
-## Downstream propagation proof
-
-For downstream payload/render/persistence/web validation, the runtime proof reused the real SOFI signal result and attached a synthetic trade-plan shell with matching symbol and timestamp fields. This was necessary because the actual live SOFI signal was `NONE`, so the real product path did not build a live trade plan for it.
-
-The downstream propagation remained faithful to the real SOFI signal context.
-
-Payload proof:
-
-```json
-{
-  "alert_state": "SUPPRESSED",
-  "market_regime": "RISK_OFF",
-  "sector_regime": "SECTOR_WEAK",
-  "event_risk_class": "NO_EVENT_RISK",
-  "micro_state": "AVAILABLE_NOT_USED",
-  "micro_present": true,
-  "micro_trigger_state": "LTF_BULLISH_RECLAIM",
-  "micro_used_for_confirmation": false
-}
-```
-
-Rendered context line:
-
-```text
-Context: market=RISK_OFF | sector=SECTOR_WEAK | event_risk=NO_EVENT_RISK
-```
-
-Rendered micro line:
-
-```text
-Micro: state=AVAILABLE_NOT_USED | present=True | trigger=LTF_BULLISH_RECLAIM | used_for_confirmation=False
-```
-
-Persisted alert proof:
-
-```json
-{
-  "ticker": "SOFI",
-  "alert_state": "SUPPRESSED",
-  "suppression_reason": "NOT_LONG",
-  "market_regime": "RISK_OFF",
-  "sector_regime": "SECTOR_WEAK",
-  "event_risk_class": "NO_EVENT_RISK",
-  "micro_state": "AVAILABLE_NOT_USED",
-  "micro_present": 1,
-  "micro_trigger_state": "LTF_BULLISH_RECLAIM",
-  "micro_used_for_confirmation": 0,
-  "telegram_status": "NOT_SENT",
-  "telegram_error": "NOT_LONG"
-}
-```
-
-Web proof:
-
-```json
-{
-  "web_contains_context_and_micro": true
-}
-```
-
-## Result
-
-The closeout runtime proof confirms:
-- 5M phase2 context loads for SOFI
-- signal output preserves micro-state correctly
-- alert payload preserves micro-state and context
-- rendered operator text preserves micro-state and context
-- persisted ops state preserves micro-state and context
-- operator web surfaces the same persisted truth
-
-## Latest true operator session
-
-Real command executed:
-
-```powershell
-doctrine once
-```
-
-Observed result:
-
-```json
-{
+  "run_id": "23d65c02-6563-46c2-b786-80f4bf373e44",
   "run_status": "SUCCESS",
   "total_symbols": 8,
   "succeeded_symbols": 1,
@@ -155,34 +62,29 @@ Observed result:
 }
 ```
 
-Observed persisted alert:
+Observed SQLite alert row:
 
 ```json
 {
   "ticker": "INTC",
+  "signal": "LONG",
+  "confidence": "0.7100",
+  "grade": "B",
+  "setup_state": "BULLISH_RECLAIM",
+  "entry_type": "AGGRESSIVE",
+  "entry_zone_low": "45.5550",
+  "entry_zone_high": "47.162750",
+  "confirmation_level": "47.2275",
+  "invalidation_level": "45.1200",
+  "tp1": "47.3000",
+  "tp2": "47.3300",
   "alert_state": "SUPPRESSED",
   "suppression_reason": "GRADE_NOT_SENDABLE",
-  "setup_state": "RECONTAINMENT_CONFIRMED",
-  "entry_type": "BASE",
-  "market_regime": "BULLISH_TREND",
-  "sector_regime": "SECTOR_STRONG",
-  "event_risk_class": "NO_EVENT_RISK",
+  "telegram_status": "NOT_SENT",
   "micro_state": "AVAILABLE_NOT_USED",
   "micro_present": 1,
   "micro_trigger_state": "LTF_BULLISH_RECLAIM",
-  "micro_used_for_confirmation": 0,
-  "telegram_status": "NOT_SENT",
-  "telegram_error": "GRADE_NOT_SENDABLE"
-}
-```
-
-Observed web console facts:
-
-```json
-{
-  "latest_run_status": "SUCCESS",
-  "web_alert_history_contains_micro_state": true,
-  "web_alert_history_contains_telegram_status": true
+  "micro_used_for_confirmation": 0
 }
 ```
 
@@ -196,3 +98,91 @@ Observed skipped-symbol classification:
   "error_message": "Invalidation anchor cannot fall inside the entry zone."
 }
 ```
+
+## Doctrine lifecycle proof
+
+Observed SQLite operator events:
+
+```json
+{
+  "doctrine_persistence": {
+    "status": "OK",
+    "detail": "signals=1 trade_plans=1 outcomes=1"
+  },
+  "outcome_tracker": {
+    "status": "OK",
+    "detail": "updated=0 open=2 finalized=0",
+    "tracking_timeframe": "15M",
+    "time_barrier_bars": 20
+  }
+}
+```
+
+Observed PostgreSQL doctrine rows:
+
+```json
+{
+  "counts": {
+    "signals": 2,
+    "trade_plans": 2,
+    "outcomes": 2
+  },
+  "latest_signal": {
+    "id": "72648634-3672-414d-a587-c8d6bdfaabc6",
+    "signal": "LONG",
+    "confidence": "0.7100",
+    "grade": "B",
+    "setup_state": "BULLISH_RECLAIM",
+    "alert_state": "SUPPRESSED",
+    "suppression_reason": "GRADE_NOT_SENDABLE"
+  },
+  "latest_trade_plan": {
+    "signal_id": "72648634-3672-414d-a587-c8d6bdfaabc6",
+    "entry_type": "AGGRESSIVE",
+    "entry_zone_low": "45.5550",
+    "entry_zone_high": "47.1628",
+    "invalidation_level": "45.1200",
+    "tp1": "47.3000",
+    "tp2": "47.3300"
+  },
+  "latest_outcome": {
+    "signal_id": "72648634-3672-414d-a587-c8d6bdfaabc6",
+    "evaluation_status": "PENDING",
+    "bars_tracked": 0
+  }
+}
+```
+
+## Telegram proof
+
+Observed real operator test send:
+
+```json
+{
+  "event_type": "TELEGRAM_TEST_SEND",
+  "status": "SENT",
+  "source": "closure-pass",
+  "message_id": "223"
+}
+```
+
+## Web proof
+
+Real browser validation against [http://127.0.0.1:8000/](http://127.0.0.1:8000/) confirmed:
+- dashboard loads without terminal usage
+- `Trades` page exists
+- latest run shows `SUCCESS`
+- latest symbol row shows `INTC` with `Outcome = PENDING`
+- suppressed alert row shows full trade details
+- tracked trades table shows PostgreSQL outcome status and alert-layer context together
+
+## Result
+
+The current closure pass proves:
+- no-terminal operator startup path works
+- SQLite operator truth is current and complete for alert/runs/errors/transport
+- PostgreSQL doctrine lifecycle persistence is active for qualifying setups
+- suppressed qualified setups are tracked for ML/outcome labels
+- outcome tracking runs automatically during product execution
+- Telegram operator test send works without affecting trading workflow
+- the dashboard exposes joined alert-layer and trade-lifecycle truth

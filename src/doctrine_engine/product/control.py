@@ -83,9 +83,10 @@ class RuntimeController:
         self._start_worker(
             kind="engine",
             command=[
-                str(self._worker_python()),
-                "-c",
-                "from doctrine_engine.product.control import run_engine_worker; run_engine_worker()",
+                str(self._worker_python("engine")),
+                "-m",
+                "doctrine_engine.product.cli",
+                "worker-engine",
             ],
             log_path=self.paths.engine_log_path,
             pid_path=self.paths.engine_pid_path,
@@ -126,9 +127,10 @@ class RuntimeController:
         self._start_worker(
             kind="run_once",
             command=[
-                str(self._worker_python()),
-                "-c",
-                "from doctrine_engine.product.control import run_once_worker; run_once_worker()",
+                str(self._worker_python("run_once")),
+                "-m",
+                "doctrine_engine.product.cli",
+                "worker-once",
             ],
             log_path=self.paths.run_once_log_path,
             pid_path=None,
@@ -141,9 +143,10 @@ class RuntimeController:
         self._start_worker(
             kind="web",
             command=[
-                str(self._worker_python()),
-                "-c",
-                "from doctrine_engine.product.control import run_web_worker; run_web_worker()",
+                str(self._worker_python("web")),
+                "-m",
+                "doctrine_engine.product.cli",
+                "worker-web",
             ],
             log_path=self.paths.web_log_path,
             pid_path=self.paths.web_pid_path,
@@ -321,8 +324,8 @@ class RuntimeController:
             return False
         return True
 
-    def _worker_python(self) -> Path:
-        if self.pythonw_exe.exists():
+    def _worker_python(self, kind: str) -> Path:
+        if kind == "web" and self.pythonw_exe.exists():
             return self.pythonw_exe
         return self.python_exe
 

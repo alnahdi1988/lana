@@ -21,4 +21,9 @@
   {% set recent_errors = errors %}
   {% include "partials/errors_table.html" %}
 </section>
+
+<section class="card">
+  <h2>Tracked Trades</h2>
+  {% include "partials/trades_table.html" with context %}
+</section>
 {% endblock %}

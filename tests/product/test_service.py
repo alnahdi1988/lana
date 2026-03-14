@@ -10,6 +10,7 @@ from doctrine_engine.product.adapters import DbPhase2FeatureLoader
 from doctrine_engine.alerts.models import AlertWorkflowInput
 from doctrine_engine.engines.models import SignalEngineResult, TradePlanEngineResult
 from doctrine_engine.product.clients import TelegramSendResult
+from doctrine_engine.product.doctrine_tracking import DoctrinePersistenceSummary, OutcomeTrackingSummary
 from doctrine_engine.product.service import DoctrineProductApp
 from doctrine_engine.product.sync import SyncResult
 from doctrine_engine.product.state import OperationalStateStore
@@ -40,6 +41,48 @@ class _StubTransport:
         )
 
 
+class _StubDoctrineLifecycleStore:
+    def __init__(self) -> None:
+        self.recorded_runs: list[list[str]] = []
+        self.updated = 0
+
+    def record_qualifying_setups(self, setups):
+        self.recorded_runs.append([str(item.signal_id) for item in setups])
+        return DoctrinePersistenceSummary(
+            recorded_signals=len(setups),
+            recorded_trade_plans=len(setups),
+            initialized_outcomes=len(setups),
+            skipped_existing=0,
+        )
+
+    def update_pending_outcomes(self):
+        self.updated += 1
+        return OutcomeTrackingSummary(
+            open_trades=1,
+            finalized_trades=0,
+            updated_outcomes=1,
+            latest_known_at="2026-03-11T10:15:00+00:00",
+            latest_tracked_until="2026-03-11T10:30:00+00:00",
+            tracking_timeframe="15M",
+            time_barrier_bars=20,
+        )
+
+    def status_snapshot(self):
+        return {
+            "status": "READY",
+            "tracking_timeframe": "15M",
+            "time_barrier_bars": 20,
+            "open_trades": 1,
+            "closed_trades": 0,
+        }
+
+    def recent_trades(self, **kwargs):
+        return []
+
+    def trade_rows_by_signal_ids(self, signal_ids):
+        return {}
+
+
 class _StubRunnerPipeline:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
@@ -61,8 +104,8 @@ class _StubRunnerPipeline:
             ltf_bar_timestamp=known_at,
             signal="LONG",
             signal_version="v1",
-            confidence=Decimal("0.8100"),
-            grade="A",
+            confidence=getattr(self, "signal_confidence", Decimal("0.8100")),
+            grade=getattr(self, "signal_grade", "A"),
             bias_htf="BULLISH",
             setup_state="RECONTAINMENT_CONFIRMED",
             reason_codes=["PRICE_RANGE_VALID"],
@@ -240,6 +283,59 @@ def test_product_service_run_once_persists_micro_contract_and_web_reads_same_val
     assert "LTF_BULLISH_RECLAIM" in page.text
     assert "Signal Time" in page.text
     assert "Known At" in page.text
+
+
+def test_product_service_run_once_records_qualifying_setup_for_doctrine_even_when_suppressed(tmp_path):
+    class _Settings:
+        database_url = "sqlite://"
+        polygon_api_key = None
+        polygon_base_url = "https://api.polygon.io"
+        polygon_timeout_seconds = 5
+        operator_state_db_path = str(tmp_path / "ops.db")
+        telegram_enabled = False
+        telegram_bot_token = None
+        telegram_chat_id = None
+        polygon_universe_refresh_limit = 10
+        universe_min_price = Decimal("5")
+        universe_max_price = Decimal("50")
+        universe_min_avg_volume_20d = Decimal("500000")
+        universe_min_avg_dollar_volume_20d = Decimal("5000000")
+        polygon_intraday_lookback_days = 30
+        polygon_daily_lookback_days = 90
+        phase2_history_window_bars = 20
+        polygon_news_lookback_hours = 72
+        polygon_news_limit = 25
+        halt_status_mode = "fail_open"
+        alert_cooldown_minutes = 60
+        log_level = "INFO"
+
+    class _SuppressedRunnerPipeline(_StubRunnerPipeline):
+        signal_grade = "B"
+        signal_confidence = Decimal("0.7400")
+
+    doctrine_store = _StubDoctrineLifecycleStore()
+    state_store = OperationalStateStore(str(tmp_path / "ops.db"))
+    app = DoctrineProductApp(
+        settings=_Settings(),
+        state_store=state_store,
+        sync_service=_StubSyncService(),
+        telegram_transport=_StubTransport(),
+        runner_pipeline_factory=_SuppressedRunnerPipeline,
+        doctrine_lifecycle_store=doctrine_store,
+    )
+
+    app.run_once()
+
+    latest_alert = state_store.recent_alerts(limit=1)[0]
+    assert latest_alert["alert_state"] == "SUPPRESSED"
+    assert latest_alert["telegram_status"] == "NOT_SENT"
+    assert len(doctrine_store.recorded_runs) == 1
+    assert len(doctrine_store.recorded_runs[0]) == 1
+    assert doctrine_store.updated == 1
+    doctrine_event = state_store.latest_operator_event("DOCTRINE_PERSISTENCE")
+    assert doctrine_event["status"] == "OK"
+    tracker_event = state_store.latest_operator_event("OUTCOME_TRACKER")
+    assert tracker_event["status"] == "OK"
 
 
 def test_build_runner_config_requests_5m_micro() -> None:

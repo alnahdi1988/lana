@@ -26,6 +26,7 @@ from doctrine_engine.product.adapters import (
     SqlitePriorAlertStateLoader,
 )
 from doctrine_engine.product.clients import PolygonClient, TelegramSendResult, TelegramTransport
+from doctrine_engine.product.doctrine_tracking import DoctrineLifecycleStore, QualifyingSetupRecord
 from doctrine_engine.product.operator_config import (
     bootstrap_operator_settings_from_runtime,
     build_operator_settings_view,
@@ -109,6 +110,7 @@ class DoctrineProductApp:
         telegram_transport: TelegramTransport | None = None,
         sync_service: PolygonSyncService | None = None,
         runner_pipeline_factory: Callable[..., RunnerPipeline] | None = None,
+        doctrine_lifecycle_store: DoctrineLifecycleStore | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         bootstrap_operator_settings_from_runtime(self.settings)
@@ -145,6 +147,16 @@ class DoctrineProductApp:
                 history_window_bars=self.settings.phase2_history_window_bars,
             )
         self.runner_pipeline_factory = runner_pipeline_factory or RunnerPipeline
+        self.doctrine_lifecycle_store = doctrine_lifecycle_store
+        if (
+            self.doctrine_lifecycle_store is None
+            and callable(self.session_factory)
+            and not str(self.settings.database_url).startswith("sqlite")
+        ):
+            self.doctrine_lifecycle_store = DoctrineLifecycleStore(
+                session_factory=self.session_factory,
+                time_barrier_bars=self.settings.phase2_history_window_bars,
+            )
 
     def build_runner_config(self) -> RunnerConfig:
         return RunnerConfig(
@@ -233,6 +245,7 @@ class DoctrineProductApp:
                 decision_result=record.decision_result,
                 rendered_text=rendered_text,
                 transport_result=transport_result,
+                prior_alert_state=record.workflow_input.prior_alert_state,
             )
             transport_results.append(
                 AlertTransportSummary(
@@ -245,6 +258,78 @@ class DoctrineProductApp:
                     message_id=transport_result.message_id,
                 )
             )
+
+        if self.doctrine_lifecycle_store is not None:
+            qualifying_setups = [
+                QualifyingSetupRecord(
+                    run_id=runner_result.run_id,
+                    signal_id=record.signal_id,
+                    signal_result=record.workflow_input.signal_result,
+                    trade_plan_result=record.workflow_input.trade_plan_result,
+                    decision_result=record.decision_result,
+                )
+                for record in workflow_wrapper.records
+                if record.workflow_input.signal_result.signal == "LONG"
+            ]
+            try:
+                persistence_summary = self.doctrine_lifecycle_store.record_qualifying_setups(qualifying_setups)
+                self.state_store.record_operator_event(
+                    event_type="DOCTRINE_PERSISTENCE",
+                    status="OK",
+                    detail=f"signals={persistence_summary.recorded_signals} trade_plans={persistence_summary.recorded_trade_plans} outcomes={persistence_summary.initialized_outcomes}",
+                    metadata={
+                        "run_id": str(runner_result.run_id),
+                        "recorded_signals": persistence_summary.recorded_signals,
+                        "recorded_trade_plans": persistence_summary.recorded_trade_plans,
+                        "initialized_outcomes": persistence_summary.initialized_outcomes,
+                        "skipped_existing": persistence_summary.skipped_existing,
+                    },
+                )
+            except Exception as exc:
+                self.state_store.record_error(
+                    run_id=runner_result.run_id,
+                    symbol_id=None,
+                    ticker=None,
+                    stage="DOCTRINE_PERSISTENCE",
+                    error_message=str(exc),
+                )
+                self.state_store.record_operator_event(
+                    event_type="DOCTRINE_PERSISTENCE",
+                    status="FAILED",
+                    detail=str(exc),
+                    metadata={"run_id": str(runner_result.run_id)},
+                )
+            try:
+                outcome_summary = self.doctrine_lifecycle_store.update_pending_outcomes()
+                self.state_store.record_operator_event(
+                    event_type="OUTCOME_TRACKER",
+                    status="OK",
+                    detail=f"updated={outcome_summary.updated_outcomes} open={outcome_summary.open_trades} finalized={outcome_summary.finalized_trades}",
+                    metadata={
+                        "run_id": str(runner_result.run_id),
+                        "updated_outcomes": outcome_summary.updated_outcomes,
+                        "open_trades": outcome_summary.open_trades,
+                        "finalized_trades": outcome_summary.finalized_trades,
+                        "latest_known_at": outcome_summary.latest_known_at,
+                        "latest_tracked_until": outcome_summary.latest_tracked_until,
+                        "tracking_timeframe": outcome_summary.tracking_timeframe,
+                        "time_barrier_bars": outcome_summary.time_barrier_bars,
+                    },
+                )
+            except Exception as exc:
+                self.state_store.record_error(
+                    run_id=runner_result.run_id,
+                    symbol_id=None,
+                    ticker=None,
+                    stage="OUTCOME_TRACKER",
+                    error_message=str(exc),
+                )
+                self.state_store.record_operator_event(
+                    event_type="OUTCOME_TRACKER",
+                    status="FAILED",
+                    detail=str(exc),
+                    metadata={"run_id": str(runner_result.run_id)},
+                )
 
         self.state_store.record_run(
             runner_result=runner_result,
@@ -310,13 +395,64 @@ class DoctrineProductApp:
             )
         return result
 
+    def doctrine_status_snapshot(self) -> dict[str, object]:
+        if self.doctrine_lifecycle_store is None:
+            return {"status": "UNAVAILABLE"}
+        try:
+            return self.doctrine_lifecycle_store.status_snapshot()
+        except Exception as exc:
+            return {"status": "ERROR", "detail": str(exc)}
+
+    def recent_trades(
+        self,
+        *,
+        limit: int = 100,
+        ticker: str | None = None,
+        signal: str | None = None,
+        setup_state: str | None = None,
+        outcome_status: str | None = None,
+    ) -> list[dict]:
+        if self.doctrine_lifecycle_store is None:
+            return []
+        try:
+            return self.doctrine_lifecycle_store.recent_trades(
+                limit=limit,
+                ticker=ticker,
+                signal=signal,
+                setup_state=setup_state,
+                outcome_status=outcome_status,
+            )
+        except Exception:
+            LOGGER.exception("Failed to load recent doctrine trades.")
+            return []
+
+    def trade_rows_by_signal_ids(self, signal_ids: list[str]) -> dict[str, dict]:
+        if self.doctrine_lifecycle_store is None:
+            return {}
+        try:
+            return self.doctrine_lifecycle_store.trade_rows_by_signal_ids(signal_ids)
+        except Exception:
+            LOGGER.exception("Failed to load doctrine trade rows for signal ids.")
+            return {}
+
+    def enrich_alert_rows(self, alerts: list[dict]) -> list[dict]:
+        trade_map = self.trade_rows_by_signal_ids([str(row.get("signal_id")) for row in alerts if row.get("signal_id")])
+        enriched: list[dict] = []
+        for row in alerts:
+            trade_row = trade_map.get(str(row.get("signal_id")))
+            merged = dict(row)
+            if trade_row:
+                merged["trade"] = trade_row
+            enriched.append(merged)
+        return enriched
+
     def create_operator_app(self):
         from doctrine_engine.product.control import RuntimeController
 
         return create_operator_app(
             self.state_store,
             controller=RuntimeController(),
-            app_builder=lambda: DoctrineProductApp(),
+            app_builder=lambda: self,
             operator_settings_builder=lambda: build_operator_settings_view(self.settings),
             enforce_setup=isinstance(self.settings, Settings),
         )

@@ -44,14 +44,14 @@ def create_operator_app(
 
     @app.get("/health")
     def health():
-        payload = _status_payload(state_store, controller, operator_settings_builder)
+        payload = _status_payload(state_store, controller, operator_settings_builder, app_builder)
         payload["latest_run"] = payload["health"]["latest_run"]
         payload["last_successful_run_time"] = payload["health"]["last_successful_run_time"]
         return JSONResponse(payload)
 
     @app.get("/api/status")
     def api_status():
-        return JSONResponse(_status_payload(state_store, controller, operator_settings_builder))
+        return JSONResponse(_status_payload(state_store, controller, operator_settings_builder, app_builder))
 
     @app.get("/api/runs")
     def api_runs(limit: int = Query(default=20, ge=1, le=200)):
@@ -91,6 +91,7 @@ def create_operator_app(
     @app.get("/api/alerts")
     def api_alerts(
         ticker: str | None = None,
+        signal: str | None = None,
         setup_state: str | None = None,
         micro_state: str | None = None,
         alert_state: str | None = None,
@@ -98,15 +99,39 @@ def create_operator_app(
         suppressed: bool | None = None,
         limit: int = Query(default=50, ge=1, le=500),
     ):
+        product_app = app_builder()
         return JSONResponse(
-            state_store.recent_alerts(
+            _enrich_alert_rows(
+                product_app,
+                state_store.recent_alerts(
+                    limit=limit,
+                    suppressed=suppressed,
+                    ticker=ticker,
+                    signal=signal,
+                    setup_state=setup_state,
+                    micro_state=micro_state,
+                    alert_state=alert_state,
+                    telegram_status=telegram_status,
+                )
+            )
+        )
+
+    @app.get("/api/trades")
+    def api_trades(
+        ticker: str | None = None,
+        signal: str | None = None,
+        setup_state: str | None = None,
+        outcome_status: str | None = None,
+        limit: int = Query(default=50, ge=1, le=500),
+    ):
+        return JSONResponse(
+            _recent_trades(
+                app_builder(),
                 limit=limit,
-                suppressed=suppressed,
                 ticker=ticker,
+                signal=signal,
                 setup_state=setup_state,
-                micro_state=micro_state,
-                alert_state=alert_state,
-                telegram_status=telegram_status,
+                outcome_status=outcome_status,
             )
         )
 
@@ -136,8 +161,45 @@ def create_operator_app(
         redirect = _setup_redirect(request, operator_settings_builder, enforce_setup)
         if redirect is not None:
             return redirect
-        status_payload = _status_payload(state_store, controller, operator_settings_builder)
+        product_app = app_builder()
+        status_payload = _status_payload(state_store, controller, operator_settings_builder, app_builder)
         latest_run = state_store.latest_run()
+        latest_symbols = _symbol_rows_with_latest_alerts(
+            state_store,
+            product_app,
+            ticker=ticker,
+            signal=signal,
+            setup_state=setup_state,
+            alert_state=alert_state,
+            micro_state=micro_state,
+            telegram_status=telegram_status,
+        )
+        generated_alerts = _enrich_alert_rows(
+            product_app,
+            state_store.recent_alerts(
+                limit=20,
+                suppressed=False,
+                ticker=ticker,
+                signal=signal,
+                setup_state=setup_state,
+                micro_state=micro_state,
+                alert_state=alert_state,
+                telegram_status=telegram_status,
+            ),
+        )
+        suppressed_alerts = _enrich_alert_rows(
+            product_app,
+            state_store.recent_alerts(
+                limit=20,
+                suppressed=True,
+                ticker=ticker,
+                signal=signal,
+                setup_state=setup_state,
+                micro_state=micro_state,
+                alert_state=alert_state,
+                telegram_status=telegram_status,
+            ),
+        )
         return templates.TemplateResponse(
             request=request,
             name="overview.html",
@@ -155,29 +217,10 @@ def create_operator_app(
                 },
                 latest_run=latest_run,
                 recent_runs=state_store.recent_runs(limit=10),
-                latest_symbols=state_store.latest_run_symbols(
-                    ticker=ticker,
-                    signal=signal,
-                    alert_state=alert_state,
-                ),
-                generated_alerts=state_store.recent_alerts(
-                    limit=20,
-                    suppressed=False,
-                    ticker=ticker,
-                    setup_state=setup_state,
-                    micro_state=micro_state,
-                    alert_state=alert_state,
-                    telegram_status=telegram_status,
-                ),
-                suppressed_alerts=state_store.recent_alerts(
-                    limit=20,
-                    suppressed=True,
-                    ticker=ticker,
-                    setup_state=setup_state,
-                    micro_state=micro_state,
-                    alert_state=alert_state,
-                    telegram_status=telegram_status,
-                ),
+                latest_symbols=latest_symbols,
+                generated_alerts=generated_alerts,
+                suppressed_alerts=suppressed_alerts,
+                recent_trades=_recent_trades(product_app, limit=20, ticker=ticker, signal=signal, setup_state=setup_state),
                 recent_errors=state_store.recent_errors(limit=20),
             ),
         )
@@ -193,7 +236,7 @@ def create_operator_app(
             context=_base_context(
                 request,
                 page_title="Runs",
-                status_payload=_status_payload(state_store, controller, operator_settings_builder),
+                status_payload=_status_payload(state_store, controller, operator_settings_builder, app_builder),
                 runs=state_store.recent_runs(limit=50),
             ),
         )
@@ -206,16 +249,17 @@ def create_operator_app(
         run = state_store.run_by_id(run_id)
         if run is None:
             return RedirectResponse(url="/runs", status_code=303)
+        product_app = app_builder()
         return templates.TemplateResponse(
             request=request,
             name="run_detail.html",
             context=_base_context(
                 request,
                 page_title=f"Run {run_id}",
-                status_payload=_status_payload(state_store, controller, operator_settings_builder),
+                status_payload=_status_payload(state_store, controller, operator_settings_builder, app_builder),
                 run=run,
                 symbols=state_store.symbols_for_run(run_id),
-                alerts=state_store.alerts_for_run(run_id),
+                alerts=_enrich_alert_rows(product_app, state_store.alerts_for_run(run_id)),
                 errors=state_store.errors_for_run(run_id),
             ),
         )
@@ -225,27 +269,40 @@ def create_operator_app(
         request: Request,
         ticker: str | None = None,
         signal: str | None = None,
+        setup_state: str | None = None,
+        micro_state: str | None = None,
         alert_state: str | None = None,
+        telegram_status: str | None = None,
     ):
         redirect = _setup_redirect(request, operator_settings_builder, enforce_setup)
         if redirect is not None:
             return redirect
-        rows = state_store.latest_run_symbols(ticker=ticker, signal=signal, alert_state=alert_state)
-        for row in rows:
-            latest_alerts = state_store.recent_alerts_for_ticker(str(row.get("ticker")), limit=1)
-            row["latest_alert"] = latest_alerts[0] if latest_alerts else None
+        product_app = app_builder()
+        rows = _symbol_rows_with_latest_alerts(
+            state_store,
+            product_app,
+            ticker=ticker,
+            signal=signal,
+            setup_state=setup_state,
+            alert_state=alert_state,
+            micro_state=micro_state,
+            telegram_status=telegram_status,
+        )
         return templates.TemplateResponse(
             request=request,
             name="symbols.html",
             context=_base_context(
                 request,
                 page_title="Symbols",
-                status_payload=_status_payload(state_store, controller, operator_settings_builder),
+                status_payload=_status_payload(state_store, controller, operator_settings_builder, app_builder),
                 symbols=rows,
                 filters={
                     "ticker": ticker or "",
                     "signal": signal or "",
+                    "setup_state": setup_state or "",
+                    "micro_state": micro_state or "",
                     "alert_state": alert_state or "",
+                    "telegram_status": telegram_status or "",
                 },
             ),
         )
@@ -255,10 +312,20 @@ def create_operator_app(
         redirect = _setup_redirect(request, operator_settings_builder, enforce_setup)
         if redirect is not None:
             return redirect
-        alerts = state_store.recent_alerts_for_ticker(ticker, limit=20)
+        product_app = app_builder()
+        alerts = _enrich_alert_rows(product_app, state_store.recent_alerts_for_ticker(ticker, limit=20))
         if not alerts:
             return RedirectResponse(url="/symbols", status_code=303)
-        symbol_rows = [row for row in state_store.latest_run_symbols(ticker=ticker) if row["ticker"] == ticker]
+        symbol_rows = _symbol_rows_with_latest_alerts(
+            state_store,
+            product_app,
+            ticker=ticker,
+            signal=None,
+            setup_state=None,
+            alert_state=None,
+            micro_state=None,
+            telegram_status=None,
+        )
         errors = [row for row in state_store.recent_errors(limit=100) if row.get("ticker") == ticker]
         return templates.TemplateResponse(
             request=request,
@@ -266,11 +333,12 @@ def create_operator_app(
             context=_base_context(
                 request,
                 page_title=f"Symbol {ticker}",
-                status_payload=_status_payload(state_store, controller, operator_settings_builder),
+                status_payload=_status_payload(state_store, controller, operator_settings_builder, app_builder),
                 ticker=ticker,
                 alerts=alerts,
                 symbol_rows=symbol_rows,
                 errors=errors,
+                trades=_recent_trades(product_app, limit=50, ticker=ticker),
             ),
         )
 
@@ -287,23 +355,26 @@ def create_operator_app(
         redirect = _setup_redirect(request, operator_settings_builder, enforce_setup)
         if redirect is not None:
             return redirect
-        rows = state_store.recent_alerts(
-            limit=100,
-            ticker=ticker,
-            setup_state=setup_state,
-            micro_state=micro_state,
-            alert_state=alert_state,
-            telegram_status=telegram_status,
+        product_app = app_builder()
+        rows = _enrich_alert_rows(
+            product_app,
+            state_store.recent_alerts(
+                limit=100,
+                ticker=ticker,
+                signal=signal,
+                setup_state=setup_state,
+                micro_state=micro_state,
+                alert_state=alert_state,
+                telegram_status=telegram_status,
+            ),
         )
-        if signal:
-            rows = [row for row in rows if row.get("ticker") and _latest_symbol_signal(state_store, row["ticker"]) == signal]
         return templates.TemplateResponse(
             request=request,
             name="alerts.html",
             context=_base_context(
                 request,
                 page_title="Alerts",
-                status_payload=_status_payload(state_store, controller, operator_settings_builder),
+                status_payload=_status_payload(state_store, controller, operator_settings_builder, app_builder),
                 alerts=rows,
                 filters={
                     "ticker": ticker or "",
@@ -312,6 +383,42 @@ def create_operator_app(
                     "alert_state": alert_state or "",
                     "micro_state": micro_state or "",
                     "telegram_status": telegram_status or "",
+                },
+            ),
+        )
+
+    @app.get("/trades")
+    def trades(
+        request: Request,
+        ticker: str | None = None,
+        signal: str | None = None,
+        setup_state: str | None = None,
+        outcome_status: str | None = None,
+    ):
+        redirect = _setup_redirect(request, operator_settings_builder, enforce_setup)
+        if redirect is not None:
+            return redirect
+        rows = _recent_trades(
+            app_builder(),
+            limit=100,
+            ticker=ticker,
+            signal=signal,
+            setup_state=setup_state,
+            outcome_status=outcome_status,
+        )
+        return templates.TemplateResponse(
+            request=request,
+            name="trades.html",
+            context=_base_context(
+                request,
+                page_title="Trades",
+                status_payload=_status_payload(state_store, controller, operator_settings_builder, app_builder),
+                trades=rows,
+                filters={
+                    "ticker": ticker or "",
+                    "signal": signal or "",
+                    "setup_state": setup_state or "",
+                    "outcome_status": outcome_status or "",
                 },
             ),
         )
@@ -328,7 +435,7 @@ def create_operator_app(
             context=_base_context(
                 request,
                 page_title="Errors",
-                status_payload=_status_payload(state_store, controller, operator_settings_builder),
+                status_payload=_status_payload(state_store, controller, operator_settings_builder, app_builder),
                 recent_errors=state_store.recent_errors(limit=100),
                 errors_by_stage=grouped["by_stage"],
                 errors_by_ticker=grouped["by_ticker"],
@@ -346,7 +453,7 @@ def create_operator_app(
             context=_base_context(
                 request,
                 page_title="Settings",
-                status_payload=_status_payload(state_store, controller, operator_settings_builder),
+                status_payload=_status_payload(state_store, controller, operator_settings_builder, app_builder),
                 operator_settings=settings_view,
                 saved=saved == "1",
                 restart_required_fields=[field for field in (restart_required or "").split(",") if field],
@@ -362,7 +469,7 @@ def create_operator_app(
             context=_base_context(
                 request,
                 page_title="Setup",
-                status_payload=_status_payload(state_store, controller, operator_settings_builder),
+                status_payload=_status_payload(state_store, controller, operator_settings_builder, app_builder),
                 operator_settings=document["settings"],
                 validation=document["meta"]["validation"],
                 setup_complete=setup_is_complete(document),
@@ -386,7 +493,7 @@ def create_operator_app(
                 context=_base_context(
                     request,
                     page_title="Setup",
-                    status_payload=_status_payload(state_store, controller, operator_settings_builder),
+                    status_payload=_status_payload(state_store, controller, operator_settings_builder, app_builder),
                     operator_settings=payload,
                     validation=validation.details,
                     setup_complete=False,
@@ -427,7 +534,7 @@ def create_operator_app(
                 context=_base_context(
                     request,
                     page_title="Settings",
-                    status_payload=_status_payload(state_store, controller, operator_settings_builder),
+                    status_payload=_status_payload(state_store, controller, operator_settings_builder, app_builder),
                     operator_settings={**updated, "validation": validation.details},
                     saved=False,
                     restart_required_fields=[],
@@ -502,6 +609,7 @@ def _status_payload(
     state_store: OperationalStateStore,
     controller: RuntimeController,
     operator_settings_builder: Callable[[], dict[str, Any]],
+    app_builder: Callable[[], Any] | None = None,
 ) -> dict[str, Any]:
     operator_settings = operator_settings_builder()
     health = state_store.health_snapshot()
@@ -519,6 +627,12 @@ def _status_payload(
         or datetime.fromisoformat(latest_test["created_at"]) > datetime.fromisoformat(str(telegram_last["created_at"]))
     ):
         telegram_last = latest_test
+    doctrine_status = {"status": "UNAVAILABLE"}
+    if app_builder is not None:
+        product_app = app_builder()
+        snapshot = getattr(product_app, "doctrine_status_snapshot", None)
+        if callable(snapshot):
+            doctrine_status = snapshot()
     return {
         "runtime": controller.status_snapshot(),
         "health": health,
@@ -527,6 +641,9 @@ def _status_payload(
         "latest_known_at": latest_known_at,
         "latest_known_age_minutes": latest_known_age_minutes,
         "latest_transport": telegram_last,
+        "latest_outcome_tracker": state_store.latest_operator_event("OUTCOME_TRACKER"),
+        "latest_doctrine_persistence": state_store.latest_operator_event("DOCTRINE_PERSISTENCE"),
+        "doctrine": doctrine_status,
     }
 
 
@@ -546,6 +663,20 @@ def _base_context(
     }
 
 
+def _enrich_alert_rows(product_app: Any, alerts: list[dict]) -> list[dict]:
+    enrich = getattr(product_app, "enrich_alert_rows", None)
+    if callable(enrich):
+        return enrich(alerts)
+    return alerts
+
+
+def _recent_trades(product_app: Any, **filters: Any) -> list[dict]:
+    recent = getattr(product_app, "recent_trades", None)
+    if callable(recent):
+        return recent(**filters)
+    return []
+
+
 def _settings_payload_from_form(form: Any) -> dict[str, Any]:
     return {
         "paper_trading_mode": True,
@@ -561,9 +692,35 @@ def _settings_payload_from_form(form: Any) -> dict[str, Any]:
     }
 
 
-def _latest_symbol_signal(state_store: OperationalStateStore, ticker: str) -> str | None:
-    rows = state_store.latest_run_symbols(ticker=ticker)
-    return rows[0]["signal"] if rows else None
+def _symbol_rows_with_latest_alerts(
+    state_store: OperationalStateStore,
+    product_app: Any,
+    *,
+    ticker: str | None,
+    signal: str | None,
+    setup_state: str | None,
+    alert_state: str | None,
+    micro_state: str | None,
+    telegram_status: str | None,
+) -> list[dict]:
+    rows = state_store.latest_run_symbols(ticker=ticker, signal=signal, alert_state=alert_state)
+    enriched: list[dict] = []
+    for row in rows:
+        latest_alerts = _enrich_alert_rows(
+            product_app,
+            state_store.recent_alerts_for_ticker(str(row.get("ticker")), limit=1)
+        )
+        latest_alert = latest_alerts[0] if latest_alerts else None
+        if setup_state and (latest_alert is None or latest_alert.get("setup_state") != setup_state):
+            continue
+        if micro_state and (latest_alert is None or latest_alert.get("micro_state") != micro_state):
+            continue
+        if telegram_status and (latest_alert is None or latest_alert.get("telegram_status") != telegram_status):
+            continue
+        merged = dict(row)
+        merged["latest_alert"] = latest_alert
+        enriched.append(merged)
+    return enriched
 
 
 app = create_operator_app(OperationalStateStore(get_settings().operator_state_db_path), enforce_setup=True)

@@ -1,15 +1,26 @@
 {% if alerts %}
+<div class="table-wrap">
 <table>
   <thead>
     <tr>
       <th>Created</th>
       <th>Ticker</th>
+      <th>Signal</th>
+      <th>Confidence</th>
+      <th>Grade</th>
       <th>Alert State</th>
       <th>Suppression</th>
       <th>Setup</th>
       <th>Entry</th>
+      <th>Entry Zone</th>
+      <th>Confirm</th>
+      <th>Invalidation</th>
+      <th>TP1</th>
+      <th>TP2</th>
       <th>Signal Time</th>
       <th>Known At</th>
+      <th>Prior Signal</th>
+      <th>Prior Sent</th>
       <th>Reason Codes</th>
       <th>Regime</th>
       <th>Sector</th>
@@ -21,21 +32,37 @@
       <th>Telegram Status</th>
       <th>Message ID</th>
       <th>Telegram Error</th>
+      <th>Outcome</th>
+      <th>First Barrier</th>
+      <th>MFE%</th>
+      <th>MAE%</th>
+      <th>Bars</th>
       <th>Summary</th>
       <th>Preview</th>
     </tr>
   </thead>
   <tbody>
     {% for row in alerts %}
+    {% set trade = row.trade if row.trade is defined else None %}
     <tr>
       <td>{{ row.created_at }}</td>
       <td><a href="/symbols/{{ row.ticker }}">{{ row.ticker }}</a></td>
+      <td>{{ row.signal or "-" }}</td>
+      <td>{{ row.confidence or "-" }}</td>
+      <td>{{ row.grade or "-" }}</td>
       <td><span class="badge">{{ row.alert_state }}</span></td>
       <td>{{ row.suppression_reason or "-" }}</td>
       <td>{{ row.setup_state }}</td>
       <td>{{ row.entry_type }}</td>
+      <td>{{ row.entry_zone_low or "-" }} - {{ row.entry_zone_high or "-" }}</td>
+      <td>{{ row.confirmation_level or "-" }}</td>
+      <td>{{ row.invalidation_level or "-" }}</td>
+      <td>{{ row.tp1 or "-" }}</td>
+      <td>{{ row.tp2 or "-" }}</td>
       <td>{{ row.signal_timestamp }}</td>
       <td>{{ row.known_at }}</td>
+      <td>{{ row.prior_signal_id or "-" }}</td>
+      <td>{{ row.prior_sent_at or "-" }}</td>
       <td>{{ row.reason_codes_json }}</td>
       <td>{{ row.market_regime or "-" }}</td>
       <td>{{ row.sector_regime or "-" }}</td>
@@ -47,12 +74,18 @@
       <td><span class="badge">{{ row.telegram_status }}</span></td>
       <td>{{ row.telegram_message_id or "-" }}</td>
       <td>{{ row.telegram_error or "-" }}</td>
+      <td>{{ trade.outcome_status if trade else "-" }}</td>
+      <td>{{ trade.first_barrier if trade else "-" }}</td>
+      <td>{{ trade.mfe_pct if trade and trade.mfe_pct is not none else "-" }}</td>
+      <td>{{ trade.mae_pct if trade and trade.mae_pct is not none else "-" }}</td>
+      <td>{{ trade.bars_tracked if trade else "-" }}</td>
       <td><pre>{{ row.operator_summary }}</pre></td>
       <td><pre>{{ row.rendered_text or "-" }}</pre></td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% else %}
 <p class="muted">No alerts.</p>
 {% endif %}

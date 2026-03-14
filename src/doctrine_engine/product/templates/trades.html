@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-header">
+  <h2>Trades</h2>
+  <p class="muted">Doctrine-qualified setups tracked for ML labels and operator review.</p>
+</section>
+
+<form class="filter-grid" method="get" action="/trades">
+  <label>Ticker<input type="text" name="ticker" value="{{ filters.ticker }}"></label>
+  <label>Signal<input type="text" name="signal" value="{{ filters.signal }}"></label>
+  <label>Setup State<input type="text" name="setup_state" value="{{ filters.setup_state }}"></label>
+  <label>Outcome Status<input type="text" name="outcome_status" value="{{ filters.outcome_status }}"></label>
+  <button type="submit">Filter</button>
+  <a class="button secondary" href="/trades">Reset</a>
+</form>
+
+<section class="card">
+  {% include "partials/trades_table.html" with context %}
+</section>
+{% endblock %}

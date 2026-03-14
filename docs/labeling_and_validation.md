@@ -2,25 +2,28 @@
 
 ## 1. Purpose
 
-This document defines how signal outcomes are measured and how the ranking model is validated.
+This document defines how doctrine-qualified setup outcomes are measured and how the ranking model is validated.
 
-The goal is to learn from real signal outcomes honestly.
-
----
+The goal is to learn from real setup outcomes honestly.
 
 ## 2. Core principle
 
-Every `LONG` signal becomes a tracked event.
+Every doctrine-qualified `LONG` setup becomes a tracked trade.
 
-The system must measure what happened after the signal, not what could have happened in hindsight.
+Implemented qualifying contract:
+- `signal == LONG`
+- trade plan successfully built
+- independent of Telegram sendability
 
----
+Not tracked as open trades:
+- `NONE` signals
+- skipped trade-plan failures where no valid executable plan exists
 
 ## 3. Outcome tracking fields
 
-For every signal, track:
-
+For every tracked trade, persist:
 - signal timestamp
+- known_at
 - entry zone
 - invalidation level
 - TP1
@@ -33,8 +36,6 @@ For every signal, track:
 - whether invalidation was hit first
 - time to follow-through
 
----
-
 ## 4. Labeling method
 
 Use triple-barrier logic.
@@ -44,16 +45,12 @@ Use triple-barrier logic.
 - loss barrier
 - time barrier
 
-A label should be assigned when one of these occurs first:
+Labels are assigned when one occurs first:
 - TP1 / TP2 hit
 - invalidation hit
 - time window expires
 
----
-
 ## 5. Required labels
-
-Minimum labels:
 
 ### success_label
 - `1` if TP1 is hit before invalidation
@@ -75,11 +72,33 @@ Maximum adverse excursion in percentage terms.
 ### bars_to_tp1
 Bars required to hit TP1 if successful.
 
----
+## 6. Persistence split
 
-## 6. Validation rules
+### PostgreSQL doctrine truth
 
-Model validation must be time-aware.
+Used for:
+- `signals`
+- `trade_plans`
+- `outcomes`
+
+This is the training / doctrine lifecycle store.
+
+### SQLite operator truth
+
+Used for:
+- runs
+- symbol outcomes
+- alert history
+- operator events
+- Telegram results
+
+This is the operator review store.
+
+Telegram `SENT` vs `NOT_SENT` must not gate PostgreSQL trade tracking.
+
+## 7. Validation rules
+
+Model validation must remain time-aware.
 
 Use:
 - walk-forward validation
@@ -89,9 +108,7 @@ Use:
 
 Do not use random train/test splits.
 
----
-
-## 7. Baseline comparison
+## 8. Baseline comparison
 
 Before promoting any ranking model, compare against:
 - deterministic doctrine-only baseline
@@ -99,12 +116,9 @@ Before promoting any ranking model, compare against:
 
 A model should only be promoted if it improves on unseen data.
 
----
-
-## 8. Reporting metrics
+## 9. Reporting metrics
 
 At minimum, report:
-
 - sample size
 - TP1 hit rate
 - TP2 hit rate
@@ -117,21 +131,8 @@ At minimum, report:
 - performance by setup type
 - performance by grade
 
----
-
-## 9. Drift detection
-
-The system must detect performance deterioration over time.
-
-Drift checks should compare:
-- recent performance vs historical baseline
-- setup family performance
-- regime-specific performance
-- confidence calibration drift
-
----
-
 ## 10. Final rule
 
 No ML model should override doctrine logic.
-It only ranks doctrine-valid setups based on learned outcome quality.
+
+ML only ranks or learns from doctrine-valid setups that already passed the qualifying contract.

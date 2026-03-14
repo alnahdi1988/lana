@@ -15,6 +15,72 @@ from doctrine_engine.product.web import create_operator_app
 from doctrine_engine.runner.models import RunnerResult, SymbolRunSummary
 
 
+class _StubProductApp:
+    def doctrine_status_snapshot(self):
+        return {
+            "status": "READY",
+            "tracking_timeframe": "15M",
+            "time_barrier_bars": 20,
+            "open_trades": 1,
+            "closed_trades": 0,
+        }
+
+    def recent_trades(self, **kwargs):
+        ticker = kwargs.get("ticker", "TEST") or "TEST"
+        return [
+            {
+                "signal_id": "trade-signal",
+                "symbol_id": "trade-symbol",
+                "ticker": ticker,
+                "signal": "LONG",
+                "confidence": "0.8100",
+                "grade": "A",
+                "setup_state": "RECONTAINMENT_CONFIRMED",
+                "entry_type": "BASE",
+                "entry_zone_low": "10.0000",
+                "entry_zone_high": "10.5000",
+                "confirmation_level": "10.8000",
+                "invalidation_level": "9.8000",
+                "tp1": "11.2000",
+                "tp2": "12.0000",
+                "signal_timestamp": "2026-03-11T10:15:00+00:00",
+                "known_at": "2026-03-11T10:15:00+00:00",
+                "reason_codes": ["PRICE_RANGE_VALID"],
+                "micro_state": "AVAILABLE_NOT_USED",
+                "outcome_status": "PENDING",
+                "first_barrier": None,
+                "success_label": None,
+                "tp2_label": None,
+                "invalidated_first": None,
+                "bars_tracked": 0,
+                "bars_to_tp1": None,
+                "mfe_pct": None,
+                "mae_pct": None,
+                "tracked_until": None,
+                "alert_state": "NEW",
+                "suppression_reason": None,
+            }
+        ]
+
+    def trade_rows_by_signal_ids(self, signal_ids):
+        return {
+            signal_id: {
+                "signal_id": signal_id,
+                "ticker": "TEST",
+                "outcome_status": "PENDING",
+                "first_barrier": None,
+                "mfe_pct": None,
+                "mae_pct": None,
+                "bars_tracked": 0,
+            }
+            for signal_id in signal_ids
+        }
+
+    def enrich_alert_rows(self, alerts):
+        trade_map = self.trade_rows_by_signal_ids([row["signal_id"] for row in alerts])
+        return [{**row, "trade": trade_map.get(row["signal_id"])} for row in alerts]
+
+
 def test_operator_web_renders_latest_state(tmp_path):
     store = OperationalStateStore(str(tmp_path / "ops.db"))
     signal_id = uuid.uuid4()
@@ -115,7 +181,7 @@ def test_operator_web_renders_latest_state(tmp_path):
     )
     store.record_run(run_result, run_result.symbol_summaries, telegram_sent=1, telegram_failed=0)
 
-    client = TestClient(create_operator_app(store))
+    client = TestClient(create_operator_app(store, app_builder=lambda: _StubProductApp()))
     response = client.get("/")
     assert response.status_code == 200
     assert "Doctrine Operator" in response.text
@@ -131,6 +197,10 @@ def test_operator_web_renders_latest_state(tmp_path):
     assert "BULLISH_TREND" in response.text
     assert "SECTOR_STRONG" in response.text
     assert "NO_EVENT_RISK" in response.text
+    assert "10.0000 - 10.5000" in response.text
+    assert "11.2000" in response.text
+    assert "PENDING" in response.text
+    assert "Doctrine Trades" in response.text
     health = client.get("/health")
     assert health.status_code == 200
     assert health.json()["latest_run"]["run_status"] == "SUCCESS"
@@ -255,7 +325,7 @@ def test_operator_web_renders_suppressed_history_symbol_detail_and_recent_errors
         error_message="workflow warning",
     )
 
-    client = TestClient(create_operator_app(store))
+    client = TestClient(create_operator_app(store, app_builder=lambda: _StubProductApp()))
     response = client.get("/")
     assert response.status_code == 200
     assert "GRADE_NOT_SENDABLE" in response.text
@@ -268,3 +338,9 @@ def test_operator_web_renders_suppressed_history_symbol_detail_and_recent_errors
     assert "Recent Alerts" in detail.text
     assert "GRADE_NOT_SENDABLE" in detail.text
     assert "telegram down" in detail.text
+    assert "Tracked Trades" in detail.text
+
+    trades_page = client.get("/trades")
+    assert trades_page.status_code == 200
+    assert "Doctrine-qualified setups tracked for ML labels" in trades_page.text
+    assert "10.0000 - 10.5000" in trades_page.text

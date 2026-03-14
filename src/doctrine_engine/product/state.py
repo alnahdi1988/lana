@@ -95,9 +95,21 @@ class OperationalStateStore:
                     send INTEGER NOT NULL,
                     family_key TEXT NOT NULL,
                     payload_fingerprint TEXT NOT NULL,
+                    signal TEXT NOT NULL DEFAULT 'LONG',
+                    confidence TEXT,
+                    grade TEXT,
                     signal_timestamp TEXT NOT NULL,
                     known_at TEXT NOT NULL,
+                    entry_zone_low TEXT,
+                    entry_zone_high TEXT,
+                    confirmation_level TEXT,
+                    invalidation_level TEXT,
+                    tp1 TEXT,
+                    tp2 TEXT,
                     suppression_reason TEXT,
+                    prior_signal_id TEXT,
+                    prior_sent_at TEXT,
+                    prior_payload_fingerprint TEXT,
                     operator_summary TEXT NOT NULL,
                     reason_codes_json TEXT NOT NULL,
                     market_regime TEXT,
@@ -157,6 +169,18 @@ class OperationalStateStore:
             existing_cols = {row[1] for row in connection.execute("PRAGMA table_info(alerts)").fetchall()}
             for col_def in (
                 "suppression_reason TEXT",
+                "signal TEXT DEFAULT 'LONG'",
+                "confidence TEXT",
+                "grade TEXT",
+                "entry_zone_low TEXT",
+                "entry_zone_high TEXT",
+                "confirmation_level TEXT",
+                "invalidation_level TEXT",
+                "tp1 TEXT",
+                "tp2 TEXT",
+                "prior_signal_id TEXT",
+                "prior_sent_at TEXT",
+                "prior_payload_fingerprint TEXT",
                 "operator_summary TEXT",
                 "market_regime TEXT",
                 "sector_regime TEXT",
@@ -293,6 +317,7 @@ class OperationalStateStore:
         decision_result: AlertDecisionResult,
         rendered_text: str | None,
         transport_result: TelegramSendResult,
+        prior_alert_state: PriorAlertState | None = None,
     ) -> None:
         payload = decision_result.payload
         created_at = transport_result.sent_at or payload.known_at
@@ -310,9 +335,21 @@ class OperationalStateStore:
                     send,
                     family_key,
                     payload_fingerprint,
+                    signal,
+                    confidence,
+                    grade,
                     signal_timestamp,
                     known_at,
+                    entry_zone_low,
+                    entry_zone_high,
+                    confirmation_level,
+                    invalidation_level,
+                    tp1,
+                    tp2,
                     suppression_reason,
+                    prior_signal_id,
+                    prior_sent_at,
+                    prior_payload_fingerprint,
                     operator_summary,
                     reason_codes_json,
                     market_regime,
@@ -327,7 +364,7 @@ class OperationalStateStore:
                     telegram_message_id,
                     telegram_error,
                     created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(run_id),
@@ -340,9 +377,21 @@ class OperationalStateStore:
                     1 if decision_result.send else 0,
                     decision_result.family_key,
                     decision_result.payload_fingerprint,
+                    payload.signal,
+                    format(payload.confidence, "f"),
+                    payload.grade,
                     payload.signal_timestamp.isoformat(),
                     payload.known_at.isoformat(),
+                    format(payload.entry_zone_low, "f"),
+                    format(payload.entry_zone_high, "f"),
+                    format(payload.confirmation_level, "f"),
+                    format(payload.invalidation_level, "f"),
+                    format(payload.tp1, "f"),
+                    format(payload.tp2, "f"),
                     decision_result.suppression_reason,
+                    str(prior_alert_state.signal_id) if prior_alert_state is not None else None,
+                    prior_alert_state.sent_at.isoformat() if prior_alert_state is not None else None,
+                    prior_alert_state.payload_fingerprint if prior_alert_state is not None else None,
                     payload.operator_summary,
                     json.dumps(payload.reason_codes),
                     payload.market_regime,
@@ -500,6 +549,7 @@ class OperationalStateStore:
         limit: int = 20,
         suppressed: bool | None = None,
         ticker: str | None = None,
+        signal: str | None = None,
         setup_state: str | None = None,
         micro_state: str | None = None,
         alert_state: str | None = None,
@@ -514,6 +564,9 @@ class OperationalStateStore:
         if ticker:
             where_parts.append("ticker = ?")
             params.append(ticker)
+        if signal:
+            where_parts.append("signal = ?")
+            params.append(signal)
         if setup_state:
             where_parts.append("setup_state = ?")
             params.append(setup_state)

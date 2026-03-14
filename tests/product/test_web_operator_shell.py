@@ -17,6 +17,22 @@ def _configure_operator_paths(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(operator_config, "DEFAULT_OPERATOR_STATE_DB_PATH", str((doctrine_home / "operations.db").resolve()))
 
 
+def _stub_product_app(store, send_telegram_test_message=None):
+    return SimpleNamespace(
+        state_store=store,
+        send_telegram_test_message=send_telegram_test_message or (lambda source: None),
+        doctrine_status_snapshot=lambda: {
+            "status": "READY",
+            "tracking_timeframe": "15M",
+            "time_barrier_bars": 20,
+            "open_trades": 0,
+            "closed_trades": 0,
+        },
+        recent_trades=lambda **kwargs: [],
+        enrich_alert_rows=lambda alerts: alerts,
+    )
+
+
 class _StubController:
     def __init__(self):
         self.actions: list[str] = []
@@ -80,10 +96,7 @@ def test_setup_flow_redirects_and_saves(monkeypatch, tmp_path):
     app = create_operator_app(
         store,
         controller=controller,
-        app_builder=lambda: SimpleNamespace(
-            state_store=store,
-            send_telegram_test_message=lambda source: None,
-        ),
+        app_builder=lambda: _stub_product_app(store),
         operator_settings_builder=lambda: operator_config.build_operator_settings_view(current_settings),
         enforce_setup=True,
     )
@@ -139,10 +152,7 @@ def test_settings_page_and_telegram_test_send_route(monkeypatch, tmp_path):
     app = create_operator_app(
         store,
         controller=_StubController(),
-        app_builder=lambda: SimpleNamespace(
-            send_telegram_test_message=lambda source: called.append(source),
-            state_store=store,
-        ),
+        app_builder=lambda: _stub_product_app(store, send_telegram_test_message=lambda source: called.append(source)),
         operator_settings_builder=lambda: operator_config.build_operator_settings_view(
             SimpleNamespace(
                 paper_trading_mode=True,
@@ -207,7 +217,7 @@ def test_click_only_runtime_skips_setup_when_effective_runtime_is_already_valid(
     app = create_operator_app(
         store,
         controller=_StubController(),
-        app_builder=lambda: SimpleNamespace(state_store=store, send_telegram_test_message=lambda source: None),
+        app_builder=lambda: _stub_product_app(store),
         operator_settings_builder=lambda: operator_config.build_operator_settings_view(current_settings),
         enforce_setup=True,
     )

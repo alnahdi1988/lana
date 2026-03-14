@@ -13,6 +13,7 @@
       <th>Reason Codes</th>
       <th>Micro State</th>
       <th>Telegram Status</th>
+      <th>Outcome</th>
       <th>Error</th>
     </tr>
   </thead>
@@ -30,6 +31,7 @@
       <td>{{ latest_alert.reason_codes_json if latest_alert else "-" }}</td>
       <td>{{ latest_alert.micro_state if latest_alert else "-" }}</td>
       <td>{{ latest_alert.telegram_status if latest_alert else "-" }}</td>
+      <td>{{ latest_alert.trade.outcome_status if latest_alert and latest_alert.trade is defined else "-" }}</td>
       <td>{{ row.error_message or "-" }}</td>
     </tr>
     {% endfor %}

@@ -49,6 +49,12 @@
 </section>
 
 <section class="card">
+  <h2>Tracked Trades</h2>
+  {% set trades = recent_trades %}
+  {% include "partials/trades_table.html" with context %}
+</section>
+
+<section class="card">
   <h2>Recent Errors</h2>
   {% include "partials/errors_table.html" with context %}
 </section>

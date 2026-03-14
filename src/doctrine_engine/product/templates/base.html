@@ -24,6 +24,7 @@
     <a href="/runs">Runs</a>
     <a href="/symbols">Symbols</a>
     <a href="/alerts">Alerts</a>
+    <a href="/trades">Trades</a>
     <a href="/errors">Errors</a>
     <a href="/settings">Settings</a>
   </nav>
@@ -68,6 +69,16 @@
         <dt>Age (min)</dt><dd>{{ status.latest_known_age_minutes if status.latest_known_age_minutes is not none else "-" }}</dd>
         <dt>Ops Store</dt><dd>{{ status.ops_store_path }}</dd>
         <dt>DB Validation</dt><dd>{{ status.operator_settings.validation.database.message if status.operator_settings.validation and status.operator_settings.validation.database else "-" }}</dd>
+      </dl>
+    </article>
+    <article class="card">
+      <h2>Doctrine Trades</h2>
+      <dl>
+        <dt>Status</dt><dd><span class="badge">{{ status.doctrine.status }}</span></dd>
+        <dt>Open Trades</dt><dd>{{ status.doctrine.open_trades if status.doctrine.open_trades is defined else "-" }}</dd>
+        <dt>Closed Trades</dt><dd>{{ status.doctrine.closed_trades if status.doctrine.closed_trades is defined else "-" }}</dd>
+        <dt>Tracking</dt><dd>{{ status.doctrine.tracking_timeframe if status.doctrine.tracking_timeframe is defined else "-" }}</dd>
+        <dt>Last Tracker</dt><dd>{{ status.latest_outcome_tracker.status if status.latest_outcome_tracker else "-" }}</dd>
       </dl>
     </article>
   </section>

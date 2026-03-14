@@ -1,0 +1,72 @@
+{% if trades %}
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr>
+      <th>Ticker</th>
+      <th>Signal</th>
+      <th>Confidence</th>
+      <th>Grade</th>
+      <th>Setup</th>
+      <th>Entry</th>
+      <th>Entry Zone</th>
+      <th>Confirm</th>
+      <th>Invalidation</th>
+      <th>TP1</th>
+      <th>TP2</th>
+      <th>Signal Time</th>
+      <th>Known At</th>
+      <th>Reason Codes</th>
+      <th>Micro</th>
+      <th>Outcome</th>
+      <th>First Barrier</th>
+      <th>Success</th>
+      <th>TP2 Hit</th>
+      <th>Invalidated First</th>
+      <th>Bars</th>
+      <th>Bars to TP1</th>
+      <th>MFE%</th>
+      <th>MAE%</th>
+      <th>Tracked Until</th>
+      <th>Alert State</th>
+      <th>Suppression</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in trades %}
+    <tr>
+      <td><a href="/symbols/{{ row.ticker }}">{{ row.ticker }}</a></td>
+      <td>{{ row.signal }}</td>
+      <td>{{ row.confidence }}</td>
+      <td>{{ row.grade }}</td>
+      <td>{{ row.setup_state }}</td>
+      <td>{{ row.entry_type }}</td>
+      <td>{{ row.entry_zone_low }} - {{ row.entry_zone_high }}</td>
+      <td>{{ row.confirmation_level }}</td>
+      <td>{{ row.invalidation_level }}</td>
+      <td>{{ row.tp1 }}</td>
+      <td>{{ row.tp2 }}</td>
+      <td>{{ row.signal_timestamp }}</td>
+      <td>{{ row.known_at }}</td>
+      <td>{{ row.reason_codes }}</td>
+      <td>{{ row.micro_state or "-" }}</td>
+      <td><span class="badge">{{ row.outcome_status }}</span></td>
+      <td>{{ row.first_barrier or "-" }}</td>
+      <td>{{ row.success_label if row.success_label is not none else "-" }}</td>
+      <td>{{ row.tp2_label if row.tp2_label is not none else "-" }}</td>
+      <td>{{ row.invalidated_first if row.invalidated_first is not none else "-" }}</td>
+      <td>{{ row.bars_tracked }}</td>
+      <td>{{ row.bars_to_tp1 if row.bars_to_tp1 is not none else "-" }}</td>
+      <td>{{ row.mfe_pct if row.mfe_pct is not none else "-" }}</td>
+      <td>{{ row.mae_pct if row.mae_pct is not none else "-" }}</td>
+      <td>{{ row.tracked_until or "-" }}</td>
+      <td>{{ row.alert_state or "-" }}</td>
+      <td>{{ row.suppression_reason or "-" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">No tracked trades.</p>
+{% endif %}
