@@ -253,11 +253,12 @@ def _alert_table(rows: list[dict]) -> str:
         return "<p>No alerts.</p>"
     parts = [
         "<table><thead><tr>",
-        "<th>created_at</th><th>ticker</th><th>alert_state</th><th>suppression_reason</th>"
-        "<th>setup_state</th><th>entry_type</th><th>market_regime</th><th>sector_regime</th>"
-        "<th>event_risk_class</th><th>micro_state</th><th>micro_present</th>"
-        "<th>micro_trigger</th><th>micro_used_confirm</th><th>telegram_status</th>"
-        "<th>telegram_error</th><th>summary</th><th>preview</th>",
+        "<th>Created At</th><th>Ticker</th><th>Alert State</th><th>Suppression Reason</th>"
+        "<th>Setup State</th><th>Entry Type</th><th>Signal Time</th><th>Known At</th>"
+        "<th>Market Regime</th><th>Sector Regime</th><th>Event Risk</th>"
+        "<th>Micro State</th><th>Micro Present</th><th>Micro Trigger</th>"
+        "<th>Micro Used for Confirmation</th><th>Telegram Status</th>"
+        "<th>Telegram Error</th><th>Operator Summary</th><th>Rendered Preview</th>",
         "</tr></thead><tbody>",
     ]
     for row in rows:
@@ -271,6 +272,8 @@ def _alert_table(rows: list[dict]) -> str:
         parts.append(f"<td>{escape(str(row.get('suppression_reason', '') or ''))}</td>")
         parts.append(f"<td>{_badge(row.get('setup_state', '') or '')}</td>")
         parts.append(f"<td>{_badge(row.get('entry_type', '') or '')}</td>")
+        parts.append(f"<td>{escape(str(row.get('signal_timestamp', '') or ''))}</td>")
+        parts.append(f"<td>{escape(str(row.get('known_at', '') or ''))}</td>")
         parts.append(f"<td>{escape(str(row.get('market_regime', '') or ''))}</td>")
         parts.append(f"<td>{escape(str(row.get('sector_regime', '') or ''))}</td>")
         parts.append(f"<td>{escape(str(row.get('event_risk_class', '') or ''))}</td>")

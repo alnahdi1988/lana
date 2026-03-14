@@ -125,6 +125,9 @@ def test_operator_web_renders_latest_state(tmp_path):
     assert "LTF_BULLISH_RECLAIM" in response.text
     assert "True" in response.text
     assert "False" in response.text
+    assert "Signal Time" in response.text
+    assert "Known At" in response.text
+    assert "2026-03-11T10:15:00+00:00" in response.text
     assert "BULLISH_TREND" in response.text
     assert "SECTOR_STRONG" in response.text
     assert "NO_EVENT_RISK" in response.text
