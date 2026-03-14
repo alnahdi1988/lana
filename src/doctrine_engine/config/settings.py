@@ -1,15 +1,19 @@
 from decimal import Decimal
 from functools import lru_cache
+from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_ENV_FILE = _REPO_ROOT / ".env"
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_ENV_FILE),
         env_prefix="SDE_",
         extra="ignore",
     )
@@ -43,6 +47,14 @@ class Settings(BaseSettings):
     web_port: int = 8000
     halt_status_mode: str = "fail_open"
     log_level: str = "INFO"
+
+    @model_validator(mode="after")
+    def _resolve_local_paths(self) -> "Settings":
+        if self.operator_state_db_path != ":memory:":
+            path = Path(self.operator_state_db_path)
+            if not path.is_absolute():
+                self.operator_state_db_path = str((_REPO_ROOT / path).resolve())
+        return self
 
 
 @lru_cache(maxsize=1)
