@@ -78,6 +78,12 @@ def test_renderer_text_contains_signal_and_known_timestamps() -> None:
     assert "Known: 2026-03-08T16:00:00+00:00" in result.text
 
 
+def test_renderer_preserves_reason_codes_in_exact_order() -> None:
+    result = TelegramRenderer().render(_payload())
+
+    assert "Reasons: PRICE_RANGE_VALID, UNIVERSE_ELIGIBLE" in result.text
+
+
 def test_renderer_not_used_for_suppressed_workflow_in_normal_pattern() -> None:
     payload = replace(_payload(), alert_state="SUPPRESSED")
     renderer_called = False

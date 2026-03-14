@@ -198,6 +198,7 @@ def test_operator_web_renders_latest_state(tmp_path):
     assert "BULLISH_TREND" in response.text
     assert "SECTOR_STRONG" in response.text
     assert "NO_EVENT_RISK" in response.text
+    assert "PRICE_RANGE_VALID" in response.text
     assert "10.0000 - 10.5000" in response.text
     assert "11.2000" in response.text
     assert "PENDING" in response.text
@@ -212,6 +213,7 @@ def test_operator_web_renders_latest_state(tmp_path):
     assert payload["market_regime"] == "BULLISH_TREND"
     assert payload["sector_regime"] == "SECTOR_STRONG"
     assert payload["event_risk_class"] == "NO_EVENT_RISK"
+    assert payload["reason_codes_json"] == '["PRICE_RANGE_VALID"]'
     filtered_symbols = client.get("/api/symbols", params={"ticker": "TEST", "alert_state": "NEW"})
     assert filtered_symbols.status_code == 200
     filtered_payload = filtered_symbols.json()
@@ -334,6 +336,7 @@ def test_operator_web_renders_suppressed_history_symbol_detail_and_recent_errors
     assert "telegram down" in response.text
     assert "workflow warning" in response.text
     assert str(symbol_id) in response.text
+    assert "PRICE_RANGE_VALID" in response.text
 
     detail = client.get("/symbols/TEST")
     assert detail.status_code == 200

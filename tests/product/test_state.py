@@ -367,6 +367,7 @@ def test_operational_state_store_round_trip(tmp_path):
     assert alert["micro_present"] == 1
     assert alert["micro_trigger_state"] == "LTF_BULLISH_RECLAIM"
     assert alert["micro_used_for_confirmation"] == 0
+    assert alert["reason_codes_json"] == '["PRICE_RANGE_VALID", "UNIVERSE_ELIGIBLE"]'
     assert alert["suppression_reason"] is None
     assert alert["operator_summary"] == decision.payload.operator_summary
     assert alert["market_regime"] == "BULLISH_TREND"
