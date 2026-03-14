@@ -5,6 +5,7 @@
     <tr>
       <th>Created</th>
       <th>Ticker</th>
+      <th>Symbol ID</th>
       <th>Signal</th>
       <th>Confidence</th>
       <th>Grade</th>
@@ -47,6 +48,7 @@
     <tr>
       <td>{{ row.created_at }}</td>
       <td><a href="/symbols/{{ row.ticker }}">{{ row.ticker }}</a></td>
+      <td>{{ row.symbol_id or "-" }}</td>
       <td>{{ row.signal or "-" }}</td>
       <td>{{ row.confidence or "-" }}</td>
       <td>{{ row.grade or "-" }}</td>

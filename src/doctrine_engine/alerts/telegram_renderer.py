@@ -14,6 +14,7 @@ class TelegramRenderer:
         text = "\n".join(
             [
                 f"{prefix}{payload.priority} | {payload.grade} LONG | {payload.ticker}",
+                f"Confidence: {self._decimal_text(payload.confidence)} | State: {payload.alert_state} | Meaning: {self._state_meaning(payload.alert_state)}",
                 f"Setup: {payload.setup_state} | Entry: {payload.entry_type}",
                 (
                     "Zone: "
@@ -54,3 +55,16 @@ class TelegramRenderer:
         if self.delayed_data_wording_mode == "strict":
             return "Polygon delayed 15m. Manual review only. Do not treat this as a live execution trigger."
         return "Polygon delayed 15m. Operator workflow alert only, not live execution."
+
+    def _state_meaning(self, alert_state: str) -> str:
+        if alert_state == "UPGRADED":
+            return "send updated operator alert"
+        if alert_state == "NEW":
+            return "send new operator alert"
+        if alert_state == "SUPPRESSED":
+            return "log only, not sent"
+        if alert_state == "DUPLICATE_BLOCKED":
+            return "blocked duplicate, not sent"
+        if alert_state == "COOLDOWN_BLOCKED":
+            return "blocked by cooldown, not sent"
+        return "operator review required"

@@ -4,6 +4,7 @@
   <thead>
     <tr>
       <th>Ticker</th>
+      <th>Symbol ID</th>
       <th>Signal</th>
       <th>Confidence</th>
       <th>Grade</th>
@@ -36,6 +37,7 @@
     {% for row in trades %}
     <tr>
       <td><a href="/symbols/{{ row.ticker }}">{{ row.ticker }}</a></td>
+      <td>{{ row.symbol_id }}</td>
       <td>{{ row.signal }}</td>
       <td>{{ row.confidence }}</td>
       <td>{{ row.grade }}</td>

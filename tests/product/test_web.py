@@ -186,6 +186,7 @@ def test_operator_web_renders_latest_state(tmp_path):
     assert response.status_code == 200
     assert "Doctrine Operator" in response.text
     assert "TEST" in response.text
+    assert str(symbol_id) in response.text
     assert "preview text" in response.text
     assert "AVAILABLE_NOT_USED" in response.text
     assert "LTF_BULLISH_RECLAIM" in response.text
@@ -332,6 +333,7 @@ def test_operator_web_renders_suppressed_history_symbol_detail_and_recent_errors
     assert "FAILED" in response.text
     assert "telegram down" in response.text
     assert "workflow warning" in response.text
+    assert str(symbol_id) in response.text
 
     detail = client.get("/symbols/TEST")
     assert detail.status_code == 200
@@ -344,3 +346,4 @@ def test_operator_web_renders_suppressed_history_symbol_detail_and_recent_errors
     assert trades_page.status_code == 200
     assert "Doctrine-qualified setups tracked for ML labels" in trades_page.text
     assert "10.0000 - 10.5000" in trades_page.text
+    assert "trade-symbol" in trades_page.text

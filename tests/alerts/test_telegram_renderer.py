@@ -47,17 +47,20 @@ def test_renderer_uses_exact_line_structure_and_delayed_wording() -> None:
     lines = result.text.splitlines()
 
     assert lines[0] == "STANDARD | A LONG | TEST"
-    assert lines[1] == "Setup: RECONTAINMENT_CONFIRMED | Entry: BASE"
-    assert lines[2] == "Zone: 10.0000 - 10.5500 | Confirm: 10.8000"
-    assert lines[3] == "Invalid: 9.8000 | TP1: 10.9500 | TP2: 11.3000"
-    assert lines[6] == "Micro: state=AVAILABLE_NOT_USED | present=True | trigger=LTF_BULLISH_RECLAIM | used_for_confirmation=False"
-    assert lines[7] == "Context: market=BULLISH_TREND | sector=SECTOR_STRONG | event_risk=NO_EVENT_RISK"
-    assert lines[8] == "Data: Polygon delayed 15m. Operator workflow alert only, not live execution."
+    assert lines[1] == "Confidence: 0.8100 | State: NEW | Meaning: send new operator alert"
+    assert lines[2] == "Setup: RECONTAINMENT_CONFIRMED | Entry: BASE"
+    assert lines[3] == "Zone: 10.0000 - 10.5500 | Confirm: 10.8000"
+    assert lines[4] == "Invalid: 9.8000 | TP1: 10.9500 | TP2: 11.3000"
+    assert lines[7] == "Micro: state=AVAILABLE_NOT_USED | present=True | trigger=LTF_BULLISH_RECLAIM | used_for_confirmation=False"
+    assert lines[8] == "Context: market=BULLISH_TREND | sector=SECTOR_STRONG | event_risk=NO_EVENT_RISK"
+    assert lines[9] == "Data: Polygon delayed 15m. Operator workflow alert only, not live execution."
 
 
 def test_renderer_uses_update_prefix_for_upgraded_payloads() -> None:
     result = TelegramRenderer().render(_payload(alert_state="UPGRADED"))
-    assert result.text.splitlines()[0] == "UPDATE | STANDARD | A LONG | TEST"
+    lines = result.text.splitlines()
+    assert lines[0] == "UPDATE | STANDARD | A LONG | TEST"
+    assert lines[1] == "Confidence: 0.8100 | State: UPGRADED | Meaning: send updated operator alert"
 
 
 def test_decimal_fields_render_deterministically_and_summary_is_preserved() -> None:
