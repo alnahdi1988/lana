@@ -140,8 +140,11 @@ Observed result:
 
 ```json
 {
-  "run_status": "PARTIAL_SUCCESS",
-  "total_symbols": 12,
+  "run_status": "SUCCESS",
+  "total_symbols": 8,
+  "succeeded_symbols": 1,
+  "skipped_symbols": 7,
+  "failed_symbols": 0,
   "generated_signals": 2,
   "generated_trade_plans": 1,
   "ranked_symbols": 1,
@@ -156,13 +159,13 @@ Observed persisted alert:
 
 ```json
 {
-  "ticker": "PBR",
+  "ticker": "INTC",
   "alert_state": "SUPPRESSED",
   "suppression_reason": "GRADE_NOT_SENDABLE",
-  "setup_state": "BULLISH_RECLAIM",
-  "entry_type": "AGGRESSIVE",
-  "market_regime": "CHOP",
-  "sector_regime": "SECTOR_NEUTRAL",
+  "setup_state": "RECONTAINMENT_CONFIRMED",
+  "entry_type": "BASE",
+  "market_regime": "BULLISH_TREND",
+  "sector_regime": "SECTOR_STRONG",
   "event_risk_class": "NO_EVENT_RISK",
   "micro_state": "AVAILABLE_NOT_USED",
   "micro_present": 1,
@@ -177,8 +180,19 @@ Observed web console facts:
 
 ```json
 {
-  "latest_run_status": "PARTIAL_SUCCESS",
+  "latest_run_status": "SUCCESS",
   "web_alert_history_contains_micro_state": true,
   "web_alert_history_contains_telegram_status": true
+}
+```
+
+Observed skipped-symbol classification:
+
+```json
+{
+  "ticker": "IREN",
+  "status": "SKIPPED",
+  "stage_reached": "BUILD_TRADE_PLAN",
+  "error_message": "Invalidation anchor cannot fall inside the entry zone."
 }
 ```

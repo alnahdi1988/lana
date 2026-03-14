@@ -4,6 +4,8 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
+from fastapi.testclient import TestClient
+
 from doctrine_engine.product.adapters import DbPhase2FeatureLoader
 from doctrine_engine.alerts.models import AlertWorkflowInput
 from doctrine_engine.engines.models import SignalEngineResult, TradePlanEngineResult
@@ -65,7 +67,15 @@ class _StubRunnerPipeline:
             setup_state="RECONTAINMENT_CONFIRMED",
             reason_codes=["PRICE_RANGE_VALID"],
             event_risk_blocked=False,
-            extensible_context={},
+            extensible_context={
+                "market_regime": "BULLISH_TREND",
+                "sector_regime": "SECTOR_STRONG",
+                "event_risk_class": "NO_EVENT_RISK",
+                "micro_state": "AVAILABLE_NOT_USED",
+                "micro_present": True,
+                "micro_trigger_state": "LTF_BULLISH_RECLAIM",
+                "micro_used_for_confirmation": False,
+            },
         )
         trade_plan_result = TradePlanEngineResult(
             signal_id=signal_id,
@@ -167,6 +177,69 @@ def test_product_service_run_once_persists_and_sends(tmp_path, monkeypatch):
     assert result.runner_result.run_status == "SUCCESS"
     assert result.transport_results[0].transport_status == "SENT"
     assert state_store.recent_alerts(limit=1, suppressed=False)[0]["telegram_status"] == "SENT"
+
+
+def test_product_service_run_once_persists_micro_contract_and_web_reads_same_values(tmp_path):
+    class _Settings:
+        database_url = "sqlite://"
+        polygon_api_key = None
+        polygon_base_url = "https://api.polygon.io"
+        polygon_timeout_seconds = 5
+        operator_state_db_path = str(tmp_path / "ops.db")
+        telegram_enabled = True
+        telegram_bot_token = "token"
+        telegram_chat_id = "chat"
+        polygon_universe_refresh_limit = 10
+        universe_min_price = Decimal("5")
+        universe_max_price = Decimal("50")
+        universe_min_avg_volume_20d = Decimal("500000")
+        universe_min_avg_dollar_volume_20d = Decimal("5000000")
+        polygon_intraday_lookback_days = 30
+        polygon_daily_lookback_days = 90
+        phase2_history_window_bars = 20
+        polygon_news_lookback_hours = 72
+        polygon_news_limit = 25
+        halt_status_mode = "fail_open"
+        alert_cooldown_minutes = 60
+        log_level = "INFO"
+
+    state_store = OperationalStateStore(str(tmp_path / "ops.db"))
+    app = DoctrineProductApp(
+        settings=_Settings(),
+        state_store=state_store,
+        sync_service=_StubSyncService(),
+        telegram_transport=_StubTransport(),
+        runner_pipeline_factory=_StubRunnerPipeline,
+    )
+
+    result = app.run_once()
+
+    persisted_alert = state_store.recent_alerts(limit=1, suppressed=False)[0]
+    assert result.runner_result.run_status == "SUCCESS"
+    assert persisted_alert["micro_state"] == "AVAILABLE_NOT_USED"
+    assert persisted_alert["micro_present"] == 1
+    assert persisted_alert["micro_trigger_state"] == "LTF_BULLISH_RECLAIM"
+    assert persisted_alert["micro_used_for_confirmation"] == 0
+    assert persisted_alert["signal_timestamp"] == "2026-03-11T10:15:00+00:00"
+    assert persisted_alert["known_at"] == "2026-03-11T10:15:00+00:00"
+
+    client = TestClient(app.create_operator_app())
+    alerts_response = client.get("/api/alerts", params={"ticker": "TEST"})
+    assert alerts_response.status_code == 200
+    alert_payload = alerts_response.json()[0]
+    assert alert_payload["micro_state"] == "AVAILABLE_NOT_USED"
+    assert alert_payload["micro_present"] == 1
+    assert alert_payload["micro_trigger_state"] == "LTF_BULLISH_RECLAIM"
+    assert alert_payload["micro_used_for_confirmation"] == 0
+    assert alert_payload["signal_timestamp"] == "2026-03-11T10:15:00+00:00"
+    assert alert_payload["known_at"] == "2026-03-11T10:15:00+00:00"
+
+    page = client.get("/")
+    assert page.status_code == 200
+    assert "AVAILABLE_NOT_USED" in page.text
+    assert "LTF_BULLISH_RECLAIM" in page.text
+    assert "Signal Time" in page.text
+    assert "Known At" in page.text
 
 
 def test_build_runner_config_requests_5m_micro() -> None:

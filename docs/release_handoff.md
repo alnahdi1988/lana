@@ -3,7 +3,8 @@
 ## Canonical branch
 
 - Canonical local branch: `main`
-- Current push command once `origin` exists:
+- Current remote: `origin = https://github.com/alnahdi1988/lana.git`
+- Current push command:
 
 ```powershell
 git -C D:\Doctrine\structure-doctrine-engine push -u origin main
@@ -61,13 +62,51 @@ Downstream propagation:
 
 - Tag: `closeout-micro-state-v1`
 
-## Remaining operational closure
+## Remote status
 
-- Remote is not configured in the local repo yet.
-- Once the canonical remote URL is known, push with:
+- `origin/main` is configured and tracking locally.
+- Release tag exists locally and remotely:
+  - `closeout-micro-state-v1`
+- Verification commands:
 
 ```powershell
-git -C D:\Doctrine\structure-doctrine-engine remote add origin <REMOTE_URL>
-git -C D:\Doctrine\structure-doctrine-engine push -u origin main
+git -C D:\Doctrine\structure-doctrine-engine remote -v
+git -C D:\Doctrine\structure-doctrine-engine branch -vv
+git -C D:\Doctrine\structure-doctrine-engine ls-remote --tags origin closeout-micro-state-v1
+```
+
+## Current runtime checkpoint
+
+- Latest post-fix live run in `.doctrine/operations.db`:
+  - `run_status = SUCCESS`
+  - `total_symbols = 8`
+  - `succeeded_symbols = 1`
+  - `skipped_symbols = 7`
+  - `failed_symbols = 0`
+  - `generated_signals = 2`
+  - `generated_trade_plans = 1`
+  - `ranked_symbols = 1`
+
+- Representative live outcomes:
+  - `INTC`:
+    - `status = SUCCESS`
+    - `stage_reached = BUILD_ALERT_DECISION`
+    - `alert_state = SUPPRESSED`
+  - `IREN`:
+    - `status = SKIPPED`
+    - `stage_reached = BUILD_TRADE_PLAN`
+    - `error_message = Invalidation anchor cannot fall inside the entry zone.`
+
+- Latest persisted alert:
+  - `ticker = INTC`
+  - `alert_state = SUPPRESSED`
+  - `suppression_reason = GRADE_NOT_SENDABLE`
+  - `telegram_status = NOT_SENT`
+  - `micro_state = AVAILABLE_NOT_USED`
+  - `micro_trigger_state = LTF_BULLISH_RECLAIM`
+
+## Push reference
+
+```powershell
 git -C D:\Doctrine\structure-doctrine-engine push origin closeout-micro-state-v1
 ```
