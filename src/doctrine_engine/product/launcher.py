@@ -1,15 +1,23 @@
 from __future__ import annotations
 
+import os
 import tkinter as tk
+import ctypes
 from tkinter import ttk
+from pathlib import Path
 
-from doctrine_engine.product.control import RuntimeController
+from doctrine_engine.product.control import RuntimeController, get_runtime_paths
+
+_LAUNCHER_MUTEX_NAME = "Global\\DoctrineOperatorLauncher"
+_LAUNCHER_MUTEX_HANDLE = None
+_ERROR_ALREADY_EXISTS = 183
 
 
 class DoctrineOperatorLauncher:
     def __init__(self) -> None:
         self.controller = RuntimeController()
         self.settings = self.controller.settings
+        self.paths = get_runtime_paths()
         self.root = tk.Tk()
         self.root.title("Doctrine Operator")
         self.root.geometry("520x360")
@@ -48,6 +56,7 @@ class DoctrineOperatorLauncher:
         ).pack(fill="both", expand=True)
 
         ttk.Button(frame, text="Close", command=self.root.destroy).pack(anchor="e", pady=(8, 0))
+        self.root.protocol("WM_DELETE_WINDOW", self._close)
 
     def run(self) -> None:
         self.controller.ensure_web_running()
@@ -108,9 +117,71 @@ class DoctrineOperatorLauncher:
         self.status_text.set("\n".join(lines))
         self.root.after(3000, self._refresh_status)
 
+    def _close(self) -> None:
+        self.paths.launcher_pid_path.unlink(missing_ok=True)
+        _release_launcher_mutex()
+        self.root.destroy()
+
 
 def run_launcher() -> None:
-    DoctrineOperatorLauncher().run()
+    paths = get_runtime_paths()
+    if _acquire_launcher_mutex() is None:
+        RuntimeController().open_dashboard()
+        os._exit(0)
+    paths.launcher_pid_path.write_text(str(_current_pid()), encoding="utf-8")
+    try:
+        DoctrineOperatorLauncher().run()
+    finally:
+        paths.launcher_pid_path.unlink(missing_ok=True)
+        _release_launcher_mutex()
+
+
+def _launcher_is_running(pid_path: Path) -> bool:
+    if not pid_path.exists():
+        return False
+    try:
+        pid = int(pid_path.read_text(encoding="utf-8").strip())
+    except ValueError:
+        pid_path.unlink(missing_ok=True)
+        return False
+    if pid <= 0:
+        pid_path.unlink(missing_ok=True)
+        return False
+    controller = RuntimeController()
+    if controller._is_process_alive(pid):
+        return True
+    pid_path.unlink(missing_ok=True)
+    return False
+
+
+def _current_pid() -> int:
+    return os.getpid()
+
+
+def _acquire_launcher_mutex():
+    global _LAUNCHER_MUTEX_HANDLE
+    if os.name != "nt":
+        return object()
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.CreateMutexW(None, False, _LAUNCHER_MUTEX_NAME)
+    if not handle:
+        return None
+    if kernel32.GetLastError() == _ERROR_ALREADY_EXISTS:
+        kernel32.CloseHandle(handle)
+        return None
+    _LAUNCHER_MUTEX_HANDLE = handle
+    return handle
+
+
+def _release_launcher_mutex() -> None:
+    global _LAUNCHER_MUTEX_HANDLE
+    if os.name != "nt":
+        _LAUNCHER_MUTEX_HANDLE = None
+        return
+    if _LAUNCHER_MUTEX_HANDLE:
+        ctypes.windll.kernel32.ReleaseMutex(_LAUNCHER_MUTEX_HANDLE)
+        ctypes.windll.kernel32.CloseHandle(_LAUNCHER_MUTEX_HANDLE)
+        _LAUNCHER_MUTEX_HANDLE = None
 
 
 __all__ = ["DoctrineOperatorLauncher", "run_launcher"]

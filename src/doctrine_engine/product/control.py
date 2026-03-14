@@ -33,6 +33,7 @@ if hasattr(subprocess, "STARTUPINFO"):
 class RuntimePaths:
     repo_root: Path
     runtime_dir: Path
+    launcher_pid_path: Path
     engine_pid_path: Path
     engine_status_path: Path
     engine_log_path: Path
@@ -50,6 +51,7 @@ def get_runtime_paths() -> RuntimePaths:
     return RuntimePaths(
         repo_root=repo_root,
         runtime_dir=runtime_dir,
+        launcher_pid_path=runtime_dir / "launcher.pid",
         engine_pid_path=runtime_dir / "engine.pid",
         engine_status_path=runtime_dir / "engine-status.json",
         engine_log_path=runtime_dir / "engine.log",
@@ -200,8 +202,11 @@ class RuntimeController:
         status_path: Path,
         initial_status: dict[str, Any],
     ) -> None:
-        live_pid = self._read_pid(pid_path) if pid_path is not None else None
+        current_status = self._read_status(status_path)
+        live_pid = self._read_pid(pid_path) if pid_path is not None else current_status.get("pid")
         if live_pid and self._is_process_alive(live_pid):
+            return
+        if self._spawn_in_progress(current_status):
             return
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("a", encoding="utf-8") as handle:
@@ -312,6 +317,18 @@ class RuntimeController:
         if self.pythonw_exe.exists():
             return self.pythonw_exe
         return self.python_exe
+
+    def _spawn_in_progress(self, current_status: dict[str, Any]) -> bool:
+        state = str(current_status.get("state") or "").upper()
+        started_at = current_status.get("started_at")
+        if state not in {"STARTING", "RUNNING"} or not started_at:
+            return False
+        try:
+            started = datetime.fromisoformat(str(started_at))
+        except ValueError:
+            return False
+        age_seconds = (datetime.now(timezone.utc) - started).total_seconds()
+        return age_seconds < 15
 
 
 def run_engine_worker() -> None:
