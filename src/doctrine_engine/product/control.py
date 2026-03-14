@@ -22,6 +22,12 @@ WINDOWS_DETACHED_FLAGS = 0
 for _name in ("DETACHED_PROCESS", "CREATE_NEW_PROCESS_GROUP", "CREATE_NO_WINDOW"):
     WINDOWS_DETACHED_FLAGS |= int(getattr(subprocess, _name, 0))
 
+WINDOWS_STARTUPINFO = None
+if hasattr(subprocess, "STARTUPINFO"):
+    WINDOWS_STARTUPINFO = subprocess.STARTUPINFO()
+    WINDOWS_STARTUPINFO.dwFlags |= getattr(subprocess, "STARTF_USESHOWWINDOW", 0)
+    WINDOWS_STARTUPINFO.wShowWindow = getattr(subprocess, "SW_HIDE", 0)
+
 
 @dataclass(frozen=True, slots=True)
 class RuntimePaths:
@@ -71,7 +77,7 @@ class RuntimeController:
         self._start_worker(
             kind="engine",
             command=[
-                str(self.python_exe),
+                str(self._worker_python()),
                 "-c",
                 "from doctrine_engine.product.control import run_engine_worker; run_engine_worker()",
             ],
@@ -114,7 +120,7 @@ class RuntimeController:
         self._start_worker(
             kind="run_once",
             command=[
-                str(self.python_exe),
+                str(self._worker_python()),
                 "-c",
                 "from doctrine_engine.product.control import run_once_worker; run_once_worker()",
             ],
@@ -129,7 +135,7 @@ class RuntimeController:
         self._start_worker(
             kind="web",
             command=[
-                str(self.python_exe),
+                str(self._worker_python()),
                 "-c",
                 "from doctrine_engine.product.control import run_web_worker; run_web_worker()",
             ],
@@ -205,6 +211,7 @@ class RuntimeController:
                 stdout=handle,
                 stderr=handle,
                 creationflags=WINDOWS_DETACHED_FLAGS,
+                startupinfo=WINDOWS_STARTUPINFO,
                 close_fds=False,
             )
         if pid_path is not None:
@@ -300,6 +307,11 @@ class RuntimeController:
         except OSError:
             return False
         return True
+
+    def _worker_python(self) -> Path:
+        if self.pythonw_exe.exists():
+            return self.pythonw_exe
+        return self.python_exe
 
 
 def run_engine_worker() -> None:
