@@ -43,6 +43,14 @@ from doctrine_engine.runner.models import (
 
 LOGGER = logging.getLogger(__name__)
 
+NON_FATAL_TRADE_PLAN_ERRORS = {
+    "No structural confirmation level exists above the entry zone.",
+    "Invalidation anchor cannot fall inside the entry zone.",
+    "No structural invalidation anchor exists.",
+    "No structural TP1 candidate exists.",
+    "No structural TP2 candidate exists.",
+}
+
 
 class SignalEvaluator(Protocol):
     def evaluate(self, signal_input: SignalEngineInput): ...
@@ -362,6 +370,22 @@ class RunnerPipeline:
                 )
             )
         except Exception as exc:
+            if self._is_non_fatal_trade_plan_error(exc):
+                counters["skipped"] = 1
+                return (
+                    SymbolRunSummary(
+                        symbol_id=symbol.symbol_id,
+                        ticker=symbol.ticker,
+                        status="SKIPPED",
+                        stage_reached="BUILD_TRADE_PLAN",
+                        signal=signal_result.signal,
+                        ranking_tier=None,
+                        alert_state=None,
+                        error_message=str(exc),
+                    ),
+                    counters,
+                    rendered,
+                )
             counters["failed"] = 1
             return (
                 SymbolRunSummary(
@@ -604,6 +628,10 @@ class RunnerPipeline:
         if failed_symbols == 0:
             return "SUCCESS"
         return "PARTIAL_SUCCESS"
+
+    @staticmethod
+    def _is_non_fatal_trade_plan_error(exc: Exception) -> bool:
+        return isinstance(exc, ValueError) and str(exc) in NON_FATAL_TRADE_PLAN_ERRORS
 
     @staticmethod
     def _failed_run_result(runner_input: RunnerInput, started_at: datetime, error_message: str) -> RunnerResult:

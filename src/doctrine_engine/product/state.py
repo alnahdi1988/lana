@@ -266,7 +266,7 @@ class OperationalStateStore:
                         summary.error_message,
                     ),
                 )
-                if summary.error_message:
+                if summary.status == "FAILED" and summary.error_message:
                     self._record_error_sql(
                         connection=connection,
                         run_id=str(runner_result.run_id),

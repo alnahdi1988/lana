@@ -221,3 +221,60 @@ def test_trade_plan_failure_with_continue_on_error_yields_partial_success() -> N
     assert result.run_status == "PARTIAL_SUCCESS"
     assert result.failed_symbols == 1
     assert result.succeeded_symbols == 1
+
+
+def test_non_fatal_trade_plan_geometry_error_skips_symbol() -> None:
+    recorder = Recorder()
+    symbol = _symbol("IREN")
+
+    class GeometrySignalFactory:
+        def __call__(self, config):
+            class Engine:
+                def evaluate(self_inner, signal_input):
+                    return make_signal_result(
+                        UniverseSymbolContext(
+                            symbol_id=signal_input.symbol_id,
+                            ticker=signal_input.ticker,
+                            universe_snapshot_id=signal_input.universe_snapshot_id,
+                            universe_eligible=signal_input.universe_eligible,
+                            price_reference=signal_input.price_reference,
+                            universe_reason_codes=signal_input.universe_reason_codes,
+                            universe_known_at=signal_input.universe_known_at,
+                        )
+                    )
+
+            return Engine()
+
+    class GeometryTradePlanEngine:
+        def build_plan(self, trade_plan_input):
+            raise ValueError("Invalidation anchor cannot fall inside the entry zone.")
+
+    pipeline = RunnerPipeline(
+        universe_context_loader=UniverseLoader(recorder, symbol),
+        market_data_loader=MarketLoader(recorder, make_symbol_context(symbol.symbol_id), make_benchmark_context()),
+        phase2_feature_loader=Phase2Loader(recorder, make_phase2_context(symbol.symbol_id)),
+        regime_external_input_loader=RegimeInputLoader(recorder, make_regime_input(symbol, make_benchmark_context())),
+        event_risk_external_input_loader=EventRiskInputLoader(recorder, make_event_risk_input(symbol)),
+        prior_alert_state_loader=PriorAlertLoader(recorder),
+        signal_engine_factory=GeometrySignalFactory(),
+        trade_plan_engine=GeometryTradePlanEngine(),
+        regime_engine=FakeRegimeEngine(recorder, make_regime_result()),
+        event_risk_engine=FakeEventRiskEngine(recorder, make_event_risk_result()),
+    )
+    result = pipeline.run(
+        RunnerInput(
+            run_id=uuid.uuid4(),
+            triggered_at=datetime(2026, 3, 11, 10, 0, tzinfo=timezone.utc),
+            config=RunnerConfig(
+                universe=UniverseSelectionConfig(max_symbols_per_run=None),
+                enable_alert_workflow=False,
+                enable_ranking=False,
+            ),
+        )
+    )
+    assert result.run_status == "SUCCESS"
+    assert result.failed_symbols == 0
+    assert result.skipped_symbols == 1
+    assert result.symbol_summaries[0].status == "SKIPPED"
+    assert result.symbol_summaries[0].stage_reached == "BUILD_TRADE_PLAN"
+    assert result.symbol_summaries[0].error_message == "Invalidation anchor cannot fall inside the entry zone."

@@ -230,3 +230,43 @@ def test_operational_state_store_round_trip(tmp_path):
     assert alert["market_regime"] == "BULLISH_TREND"
     assert alert["sector_regime"] == "SECTOR_STRONG"
     assert alert["event_risk_class"] == "NO_EVENT_RISK"
+
+
+def test_record_run_does_not_promote_skipped_symbols_into_errors(tmp_path):
+    store = OperationalStateStore(str(tmp_path / "ops.db"))
+    symbol_id = uuid.uuid4()
+    known_at = datetime(2026, 3, 11, 10, 15, tzinfo=timezone.utc)
+    run_result = RunnerResult(
+        run_id=uuid.uuid4(),
+        started_at=known_at,
+        finished_at=known_at,
+        run_status="SUCCESS",
+        total_symbols=1,
+        succeeded_symbols=0,
+        skipped_symbols=1,
+        failed_symbols=0,
+        generated_signals=1,
+        generated_trade_plans=0,
+        ranked_symbols=0,
+        sendable_alerts=0,
+        rendered_alerts=0,
+        rendered_alert_texts=[],
+        symbol_summaries=[
+            SymbolRunSummary(
+                symbol_id=symbol_id,
+                ticker="IREN",
+                status="SKIPPED",
+                stage_reached="BUILD_TRADE_PLAN",
+                signal="LONG",
+                ranking_tier=None,
+                alert_state=None,
+                error_message="Invalidation anchor cannot fall inside the entry zone.",
+            )
+        ],
+    )
+
+    store.record_run(run_result, run_result.symbol_summaries, telegram_sent=0, telegram_failed=0)
+
+    assert store.latest_run()["failed_symbols"] == 0
+    assert store.latest_run_symbols()[0]["status"] == "SKIPPED"
+    assert store.recent_errors(limit=10) == []
