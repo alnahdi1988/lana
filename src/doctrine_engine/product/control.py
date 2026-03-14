@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 import webbrowser
+import ctypes
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,9 @@ if hasattr(subprocess, "STARTUPINFO"):
     WINDOWS_STARTUPINFO = subprocess.STARTUPINFO()
     WINDOWS_STARTUPINFO.dwFlags |= getattr(subprocess, "STARTF_USESHOWWINDOW", 0)
     WINDOWS_STARTUPINFO.wShowWindow = getattr(subprocess, "SW_HIDE", 0)
+
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+STILL_ACTIVE = 259
 
 
 @dataclass(frozen=True, slots=True)
@@ -299,14 +303,18 @@ class RuntimeController:
     def _is_process_alive(self, pid: int) -> bool:
         if pid <= 0:
             return False
-        result = subprocess.run(
-            ["tasklist", "/FI", f"PID eq {pid}"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if str(pid) in result.stdout:
-            return True
+        if os.name == "nt":
+            kernel32 = ctypes.windll.kernel32
+            handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+            if not handle:
+                return False
+            try:
+                exit_code = ctypes.c_ulong()
+                if kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)) == 0:
+                    return False
+                return exit_code.value == STILL_ACTIVE
+            finally:
+                kernel32.CloseHandle(handle)
         try:
             os.kill(pid, 0)
         except OSError:
