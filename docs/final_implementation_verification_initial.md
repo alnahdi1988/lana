@@ -299,7 +299,28 @@ Verification date: 2026-03-15
 - Gap: none
 - Status: DONE
 
+### Row 14
+- Requirement: Managed run_once completion contract
+- Real current behavior: The controller and worker code indicate that `run_once_now()` should move from `RUNNING` back to `IDLE` and clear the worker PID after completion, but the baseline did not yet include an explicit fresh managed cycle proof through completion or restartability after completion.
+- File path(s):
+  - `D:\Doctrine\structure-doctrine-engine\src\doctrine_engine\product\control.py`
+  - `D:\Doctrine\structure-doctrine-engine\tests\product\test_control.py`
+  - `D:\Doctrine\structure-doctrine-engine\.doctrine\runtime\run-once-status.json`
+- Implementation location (class/function): `RuntimeController.run_once_now`, `RuntimeController.status_snapshot`, `RuntimeController._coerce_status`, `run_once_worker`
+- Persistence location: `.doctrine\runtime\run-once-status.json`; SQLite `runs` on successful completion
+- Operator surface: launcher/control status
+- Proof:
+  - code proof: present in `run_once_now`, `status_snapshot`, `_coerce_status`, and `run_once_worker`
+  - test proof: partial; baseline control tests covered spawn behavior but not full completion + clean restartability
+  - SQLite proof: partial; latest successful run row existed, but no dedicated managed-cycle proof tied it to a freshly observed `run_once_now`
+  - PostgreSQL proof: N/A
+  - dashboard/web proof: N/A
+  - Telegram proof: N/A
+  - live runtime proof: partial; baseline had historical `run_once` success in status history, but not an explicitly captured fresh managed cycle through completion
+- Gap: no explicit proof yet for start state, live `RUNNING` state, completion state, PID exit, `IDLE` return, and clean second `run_once_now()` after completion
+- Status: PARTIAL
+
 ## Initial Result
 - P0: none
-- P1: Row 03 trade object completeness, Row 05 Telegram completeness, Row 07 reason-code consistency
+- P1: Row 03 trade object completeness, Row 05 Telegram completeness, Row 07 reason-code consistency, Row 14 managed run_once completion contract
 - P2: Row 11 cross-surface truth consistency proof gap

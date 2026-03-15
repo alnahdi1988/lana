@@ -299,6 +299,36 @@ Verification date: 2026-03-15
 - Gap: none
 - Status: DONE
 
+### Row 14
+- Requirement: Managed run_once completion contract
+- Real current behavior: The managed `run_once_now()` path transitions cleanly from `STARTING` to `RUNNING` to `IDLE`, clears the active worker PID on completion, and allows a second managed `run_once_now()` to start cleanly afterward with no overlapping worker. Historical managed success proves the successful completion path in live status history; fresh live cycles in this pass proved clean controller teardown and clean restartability even when the provider returned a fast delayed-data error.
+- File path(s):
+  - `D:\Doctrine\structure-doctrine-engine\src\doctrine_engine\product\control.py`
+  - `D:\Doctrine\structure-doctrine-engine\tests\product\test_control.py`
+  - `D:\Doctrine\structure-doctrine-engine\.doctrine\runtime\run-once-status.json`
+  - `D:\Doctrine\structure-doctrine-engine\.doctrine\operations.db`
+- Implementation location (class/function): `RuntimeController.run_once_now`, `RuntimeController.status_snapshot`, `RuntimeController._coerce_status`, `run_once_worker`
+- Persistence location: `.doctrine\runtime\run-once-status.json`; SQLite `runs` on successful completion
+- Operator surface: launcher/control status
+- Proof:
+  - code proof: `run_once_now` writes `RUNNING` intent before spawn, `run_once_worker` writes live `RUNNING` and final `IDLE`, and `_coerce_status` prevents a stale live pid from remaining `RUNNING`
+  - test proof: `tests/product/test_control.py::test_run_once_worker_success_resets_status_to_idle`, `tests/product/test_control.py::test_runtime_controller_run_once_does_not_overlap_existing_running_worker`, `tests/product/test_control.py::test_runtime_controller_run_once_can_restart_cleanly_after_idle`
+  - SQLite proof: latest successful managed run remains `run_id=94eb061d-d7f8-4632-9a21-bd0f96f0cc03`, `run_status=SUCCESS`, `started_at=2026-03-14T23:50:22.191097+00:00`, `finished_at=2026-03-14T23:50:31.764578+00:00`; fresh observed error cycles did not create ambiguous partial run rows
+  - PostgreSQL proof: N/A
+  - dashboard/web proof: N/A
+  - Telegram proof: N/A
+  - live runtime proof:
+    - exact start state: `{"kind":"run_once","state":"IDLE","pid":null,"last_result_status":"ERROR","last_run_id":null,"last_finished_at":"2026-03-15T00:29:08.966886+00:00"}`
+    - exact RUNNING state: observed at `elapsed_ms=1331` with `{"kind":"run_once","state":"RUNNING","pid":30676,"last_result_status":null,"last_run_id":null,"last_finished_at":null}` and matching status-file state `RUNNING`
+    - exact completion state: observed at `elapsed_ms=1849` with `{"kind":"run_once","state":"IDLE","pid":null,"last_result_status":"ERROR","last_run_id":null,"last_finished_at":"2026-03-15T00:30:06.346759+00:00"}`
+    - whether PID exits: yes; live worker pid `30676` was alive in `RUNNING` and not alive at completion
+    - whether status returns to `IDLE`: yes; both controller snapshot and `run-once-status.json` returned to `IDLE`
+    - whether a second `run_once_now` can be started cleanly afterward: yes; after the first fresh completion the controller started a second managed cycle with no overlap, `second_start_state={"state":"STARTING","pid":22036}`
+    - whether any timeout / stuck / overlapping-worker condition exists: none observed; no overlap, no orphan pid, no stuck `RUNNING` state
+    - whether acceptable for normal operator use: yes for the controller-state contract; observed windows are approximately `1.8s` for fast provider-failure cleanup and `651.3s` for the latest historical successful managed completion
+- Gap: none
+- Status: DONE
+
 ## Final Result
 - P0: none
 - P1: none
