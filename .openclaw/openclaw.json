@@ -1,0 +1,170 @@
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "anthropic/claude-sonnet-4-6",
+        "fallbacks": [
+            "openai/gpt-5.4"
+        ]
+      },
+      "workspace": "__REPO_ROOT__\\.openclaw\\workspaces\\aria-chat",
+      "heartbeat": {
+        "every": "0m",
+        "suppressToolErrorWarnings": true
+      },
+      "memorySearch": {
+        "enabled": false
+      }
+    },
+    "list": [
+      {
+        "id": "aria-chat",
+        "name": "Victor",
+        "workspace": "__REPO_ROOT__\\.openclaw\\workspaces\\aria-chat",
+        "model": {
+          "primary": "anthropic/claude-sonnet-4-6",
+          "fallbacks": [
+            "openai/gpt-5.4"
+          ]
+        },
+        "heartbeat": {
+          "every": "0m",
+          "suppressToolErrorWarnings": true
+        },
+        "tools": {
+          "profile": "coding",
+          "deny": [
+            "edit",
+            "process",
+            "web_*"
+          ]
+        },
+        "subagents": {
+          "allowAgents": [
+            "aria-ops",
+            "aria-code"
+          ]
+        }
+      },
+      {
+        "id": "aria-ops",
+        "name": "ARIA-OPS",
+        "workspace": "__REPO_ROOT__\\.openclaw\\workspaces\\aria-ops",
+        "model": {
+          "primary": "openai/gpt-5.4",
+          "fallbacks": [
+            "anthropic/claude-sonnet-4-6"
+          ]
+        },
+        "heartbeat": {
+          "every": "15m",
+          "suppressToolErrorWarnings": true
+        },
+        "tools": {
+          "profile": "coding",
+          "deny": [
+            "edit",
+            "write",
+            "apply_patch",
+            "browser*",
+            "web_*"
+          ]
+        },
+        "subagents": {
+          "allowAgents": []
+        }
+      },
+      {
+        "id": "aria-code",
+        "name": "ARIA-CODE",
+        "workspace": "__REPO_ROOT__\\.openclaw\\workspaces\\aria-code",
+        "model": {
+          "primary": "openai-codex/gpt-5.4",
+          "fallbacks": [
+            "openai/gpt-5.4",
+            "anthropic/claude-sonnet-4-6"
+          ]
+        },
+        "heartbeat": {
+          "every": "0m",
+          "suppressToolErrorWarnings": true
+        },
+        "tools": {
+          "profile": "coding",
+          "deny": [
+            "browser*"
+          ]
+        },
+        "subagents": {
+          "allowAgents": []
+        }
+      }
+    ]
+  },
+  "bindings": [
+    {
+      "type": "route",
+      "agentId": "aria-chat",
+      "match": {
+        "channel": "telegram",
+        "accountId": "default"
+      }
+    }
+  ],
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "defaultAccount": "default",
+      "dmPolicy": "allowlist",
+      "allowFrom": [
+        "8569633077"
+      ],
+      "groupPolicy": "disabled",
+      "streaming": "partial",
+      "tokenFile": "__OPENCLAW_HOME__\\secrets\\telegram-bot-token.txt"
+    }
+  },
+  "gateway": {
+    "port": 19881,
+    "mode": "local",
+    "bind": "loopback",
+    "auth": {
+      "mode": "token",
+      "token": "__BOOTSTRAP_REQUIRED__",
+      "allowTailscale": true
+    },
+    "trustedProxies": [
+      "127.0.0.1",
+      "::1"
+    ],
+    "tailscale": {
+      "mode": "serve",
+      "resetOnExit": false
+    }
+  },
+  "session": {
+    "dmScope": "per-channel-peer"
+  },
+  "tools": {
+    "profile": "coding",
+    "deny": [
+      "browser*"
+    ]
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto",
+    "restart": true,
+    "ownerDisplay": "raw"
+  },
+  "plugins": {
+    "allow": [
+      "telegram"
+    ],
+    "entries": {
+      "telegram": {
+        "enabled": true
+      }
+    }
+  }
+}

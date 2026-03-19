@@ -1,0 +1,219 @@
+{
+  "version": 2,
+  "timezone": "Asia/Riyadh",
+  "jobs": [
+    {
+      "id": "heartbeat-check",
+      "name": "Heartbeat Check",
+      "description": "Silent every-30-minute health and queue heartbeat.",
+      "agent": "aria-ops",
+      "schedule": {
+        "cron": "*/30 * * * *",
+        "exact": true
+      },
+      "session": "isolated",
+      "lightContext": true,
+      "announce": false,
+      "thinking": "low",
+      "message": "Read `D:\\Doctrine\\structure-doctrine-engine\\.openclaw\\workspaces\\aria-ops\\HEARTBEAT.md`. Run `python D:\\Doctrine\\structure-doctrine-engine\\health_check.py --json --emit-task` and `python D:\\Doctrine\\structure-doctrine-engine\\scripts\\openclaw_task_queue.py report`. health_check.py now includes bar-freshness and engine-cycle checks — if either fails, it is a P0 incident regardless of market hours. Additionally: (1) run `python D:\\Doctrine\\structure-doctrine-engine\\.openclaw\\skills\\victor-outcome-tracker\\outcome_tracker.py` — if PENDING outcomes show bars_tracked=0 after multiple engine cycles on a trading day, create an ops-outcome-tracker incident task. (2) Check the last 5 signals via `python D:\\Doctrine\\structure-doctrine-engine\\.openclaw\\skills\\db-query\\db_query.py latest-signals` — if any LONG signal is SENDABLE but not SENT, flag as a P1 alert-delivery failure. Stay quiet when all checks pass. Surface failures and unusual conditions quickly."
+    },
+    {
+      "id": "daily-security-audit",
+      "name": "Daily Security Audit",
+      "description": "Run the OpenClaw security audit and repo drift review every morning.",
+      "agent": "aria-ops",
+      "schedule": {
+        "cron": "0 6 * * *",
+        "exact": true
+      },
+      "session": "isolated",
+      "lightContext": true,
+      "announce": true,
+      "deliverToPrimaryAllowlist": true,
+      "channel": "telegram",
+      "thinking": "low",
+      "message": "Run `D:\\Doctrine\\structure-doctrine-engine\\.openclaw\\audit.ps1`. Then run `python D:\\Doctrine\\structure-doctrine-engine\\scripts\\openclaw_task_queue.py report`. Reply using exactly these sections: Current incidents, Approved work in flight, Next approval needed. If the audit is clean, keep each section concise."
+    },
+    {
+      "id": "premarket-readiness",
+      "name": "Morning Briefing",
+      "description": "Morning operator briefing before the U.S. market session.",
+      "agent": "aria-ops",
+      "schedule": {
+        "cron": "0 8 * * 1-5",
+        "exact": true
+      },
+      "session": "isolated",
+      "lightContext": true,
+      "announce": true,
+      "deliverToPrimaryAllowlist": true,
+      "channel": "telegram",
+      "thinking": "low",
+      "message": "Run `python D:\\Doctrine\\structure-doctrine-engine\\health_check.py --json --emit-task` and `python D:\\Doctrine\\structure-doctrine-engine\\scripts\\doctrine_control_review.py data-freshness --json --emit-task`. Then run `python D:\\Doctrine\\structure-doctrine-engine\\scripts\\openclaw_task_queue.py report`. Reply using exactly these sections: Current incidents, Approved work in flight, Next approval needed. Focus on DB reachability, ingestion freshness, universe freshness, doctrine runner health, and whether the signal pipeline is ready for the U.S. session."
+    },
+    {
+      "id": "market-open-verify",
+      "name": "Market Open Verify",
+      "description": "Confirm the stack is healthy at U.S. market open.",
+      "agent": "aria-ops",
+      "schedule": {
+        "cron": "30 9 * * 1-5",
+        "exact": true
+      },
+      "session": "isolated",
+      "lightContext": true,
+      "announce": true,
+      "deliverToPrimaryAllowlist": true,
+      "channel": "telegram",
+      "thinking": "low",
+      "message": "Run `python D:\\Doctrine\\structure-doctrine-engine\\health_check.py --json --emit-task` and `python D:\\Doctrine\\structure-doctrine-engine\\scripts\\doctrine_control_review.py pipeline-integrity --json --emit-task`. Then run `python D:\\Doctrine\\structure-doctrine-engine\\scripts\\openclaw_task_queue.py report`. Reply using exactly these sections: Current incidents, Approved work in flight, Next approval needed. Confirm delayed-data cadence, notifier health, and whether any pipeline stage is blocked or silently stale."
+    },
+    {
+      "id": "data-freshness-review",
+      "name": "Data Freshness Review",
+      "description": "Silent low-noise review of bar ingestion and universe freshness.",
+      "agent": "aria-ops",
+      "schedule": {
+        "cron": "0 */4 * * *",
+        "exact": true
+      },
+      "session": "isolated",
+      "lightContext": true,
+      "announce": false,
+      "thinking": "low",
+      "message": "Run `python D:\\Doctrine\\structure-doctrine-engine\\scripts\\doctrine_control_review.py data-freshness --json --emit-task`. Stay quiet if the review is healthy. If it fails, make sure the queue reflects the failure immediately and include the exact stale data dimensions in the next operator-facing summary."
+    },
+    {
+      "id": "pipeline-integrity-review",
+      "name": "Pipeline Integrity Review",
+      "description": "Silent low-noise review of recent Doctrine pipeline progress from run state and notifier evidence.",
+      "agent": "aria-ops",
+      "schedule": {
+        "cron": "15 */4 * * *",
+        "exact": true
+      },
+      "session": "isolated",
+      "lightContext": true,
+      "announce": false,
+      "thinking": "low",
+      "message": "Run `python D:\\Doctrine\\structure-doctrine-engine\\scripts\\doctrine_control_review.py pipeline-integrity --json --emit-task`. Stay quiet if the review is healthy. If it fails, make sure the queue reflects the failure immediately and include the exact stale or unhealthy pipeline evidence in the next operator-facing summary."
+    },
+    {
+      "id": "git-backup",
+      "name": "Git Backup",
+      "description": "Silent backup of repo-local OpenClaw state and tasks every two hours.",
+      "agent": "aria-ops",
+      "schedule": {
+        "cron": "0 */2 * * *",
+        "exact": true
+      },
+      "session": "isolated",
+      "lightContext": true,
+      "announce": false,
+      "thinking": "low",
+      "message": "Run `D:\\Doctrine\\structure-doctrine-engine\\.openclaw\\backup.ps1`. If the backup fails, make sure the Doctrine queue reflects the failure immediately."
+    },
+    {
+      "id": "approval-review",
+      "name": "Approval Review",
+      "description": "Review newly proposed Doctrine tasks that are waiting for operator approval.",
+      "agent": "aria-ops",
+      "schedule": {
+        "cron": "0 8,12,16,20 * * 1-5",
+        "exact": true
+      },
+      "session": "isolated",
+      "lightContext": true,
+      "announce": true,
+      "deliverToPrimaryAllowlist": true,
+      "channel": "telegram",
+      "thinking": "medium",
+      "message": "Run `python D:\\Doctrine\\structure-doctrine-engine\\scripts\\openclaw_task_queue.py report`. Review `tasks\\proposed.md`. Reply using exactly these sections: Current incidents, Approved work in flight, Next approval needed. In the final section, prioritize only items that need Saleh to approve or reject."
+    },
+    {
+      "id": "incident-review",
+      "name": "Incident Review",
+      "description": "Review open Doctrine incidents and health tasks for operator action.",
+      "agent": "aria-ops",
+      "schedule": {
+        "cron": "15 8,12,16,20 * * 1-5",
+        "exact": true
+      },
+      "session": "isolated",
+      "lightContext": true,
+      "announce": true,
+      "deliverToPrimaryAllowlist": true,
+      "channel": "telegram",
+      "thinking": "low",
+      "message": "Run `python D:\\Doctrine\\structure-doctrine-engine\\scripts\\openclaw_task_queue.py report`. Review open `incident` and `health` tasks under `tasks\\proposed.md`, `tasks\\approved.md`, and `tasks\\blocked.md`. Reply using exactly these sections: Current incidents, Approved work in flight, Next approval needed."
+    },
+    {
+      "id": "eod-report",
+      "name": "Evening Review",
+      "description": "Summarize the operating state of the platform after the trading day.",
+      "agent": "aria-ops",
+      "schedule": {
+        "cron": "0 17 * * 1-5",
+        "exact": true
+      },
+      "session": "isolated",
+      "lightContext": true,
+      "announce": true,
+      "deliverToPrimaryAllowlist": true,
+      "channel": "telegram",
+      "thinking": "medium",
+      "message": "Run `python D:\\Doctrine\\structure-doctrine-engine\\scripts\\openclaw_task_queue.py report`. Then read `tasks\\done.md` and the latest logs under `D:\\Doctrine\\structure-doctrine-engine\\.openclaw\\runtime\\logs` if present. Reply using exactly these sections: Current incidents, Approved work in flight, Next approval needed. Include only the highest-signal incidents from today, completed engineering or ops work, and the next operator decisions needed."
+    },
+    {
+      "id": "weekly-cron-audit",
+      "name": "Weekly Cron Audit",
+      "description": "Validate cron coverage and control-plane consistency.",
+      "agent": "aria-ops",
+      "schedule": {
+        "cron": "0 7 * * 1",
+        "exact": true
+      },
+      "session": "isolated",
+      "lightContext": true,
+      "announce": true,
+      "deliverToPrimaryAllowlist": true,
+      "channel": "telegram",
+      "thinking": "low",
+      "message": "Run `D:\\Doctrine\\structure-doctrine-engine\\.openclaw\\cron-audit.ps1`. Summarize only actionable findings. If the cron layer is clean, reply with one short line stating that cron coverage and validation are clean."
+    },
+    {
+      "id": "weekly-version-check",
+      "name": "Weekly Version Check",
+      "description": "Compare the installed OpenClaw version with the published npm version.",
+      "agent": "aria-ops",
+      "schedule": {
+        "cron": "15 7 * * 1",
+        "exact": true
+      },
+      "session": "isolated",
+      "lightContext": true,
+      "announce": true,
+      "deliverToPrimaryAllowlist": true,
+      "channel": "telegram",
+      "thinking": "low",
+      "message": "Run `D:\\Doctrine\\structure-doctrine-engine\\.openclaw\\version-check.ps1`. Report the installed version, the published npm version, and whether operator action is required."
+    },
+    {
+      "id": "weekly-progress",
+      "name": "Weekly Progress",
+      "description": "Weekly operating summary and next-priority review.",
+      "agent": "aria-ops",
+      "schedule": {
+        "cron": "0 9 * * 1",
+        "exact": true
+      },
+      "session": "isolated",
+      "lightContext": true,
+      "announce": true,
+      "deliverToPrimaryAllowlist": true,
+      "channel": "telegram",
+      "thinking": "medium",
+      "message": "Run `python D:\\Doctrine\\structure-doctrine-engine\\scripts\\openclaw_task_queue.py report`. Then summarize the past week using `tasks\\done.md` and `.openclaw\\runtime\\logs`. Reply using exactly these sections: Current incidents, Approved work in flight, Next approval needed. Keep the report operator-focused around data quality issues, signal-pipeline gaps, code backlog movement, and ranking or outcome review tasks awaiting approval. After the three sections, recommend exactly one new recurring check or one process improvement and create only a `proposed` task if it is justified."
+    }
+  ]
+}
