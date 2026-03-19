@@ -78,6 +78,7 @@ class DoctrineLifecycleStore:
                 if signal_created:
                     recorded_signals += 1
                 elif signal is not None:
+                    self._refresh_existing_signal(signal, setup)
                     skipped_existing += 1
 
                 existing_plan = session.scalar(select(TradePlan).where(TradePlan.signal_id == signal.id))
@@ -378,6 +379,28 @@ class DoctrineLifecycleStore:
         session.add(signal)
         return signal, True
 
+    def _refresh_existing_signal(self, signal: Signal, setup: QualifyingSetupRecord) -> None:
+        signal.known_at = max(signal.known_at, setup.signal_result.known_at)
+        signal.htf_bar_timestamp = setup.signal_result.htf_bar_timestamp
+        signal.mtf_bar_timestamp = setup.signal_result.mtf_bar_timestamp
+        signal.ltf_bar_timestamp = setup.signal_result.ltf_bar_timestamp
+        signal.signal = SignalValue(setup.signal_result.signal)
+        signal.signal_version = setup.signal_result.signal_version
+        signal.confidence = setup.signal_result.confidence
+        signal.grade = SignalGrade(setup.signal_result.grade)
+        signal.bias_htf = HTFBias(setup.signal_result.bias_htf)
+        signal.setup_state = setup.signal_result.setup_state
+        signal.reason_codes = _merge_reason_codes(signal.reason_codes, setup.signal_result.reason_codes)
+        signal.event_risk_blocked = setup.signal_result.event_risk_blocked
+        signal.extensible_context = {
+            **dict(signal.extensible_context or {}),
+            **dict(setup.signal_result.extensible_context),
+            "run_id": str(setup.run_id),
+            "alert_state": setup.decision_result.alert_state,
+            "suppression_reason": setup.decision_result.suppression_reason,
+            "telegram_sendable": setup.decision_result.send,
+        }
+
     def _build_signal(self, setup: QualifyingSetupRecord) -> Signal:
         return Signal(
             id=setup.signal_id,
@@ -442,3 +465,11 @@ class DoctrineLifecycleStore:
 
 def _entry_reference_price(entry_zone_low: Decimal, entry_zone_high: Decimal) -> Decimal:
     return (Decimal(entry_zone_low) + Decimal(entry_zone_high)) / Decimal("2")
+
+
+def _merge_reason_codes(existing: list[str], incoming: list[str]) -> list[str]:
+    merged: list[str] = []
+    for code in [*(existing or []), *(incoming or [])]:
+        if code not in merged:
+            merged.append(code)
+    return merged

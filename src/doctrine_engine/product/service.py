@@ -16,6 +16,8 @@ from doctrine_engine.alerts.models import AlertDecisionPayload, AlertDecisionRes
 from doctrine_engine.alerts.telegram_renderer import TelegramRenderer
 from doctrine_engine.alerts.workflow import AlertWorkflow, AlertWorkflowConfig
 from doctrine_engine.config.settings import Settings, get_settings
+from doctrine_engine.learning.registry import ModelRunRegistry
+from doctrine_engine.learning.reporting import ValidationReporter
 from doctrine_engine.product.adapters import (
     ConfiguredHaltStatusProvider,
     DbMarketDataLoader,
@@ -409,6 +411,14 @@ class DoctrineProductApp:
             return {"status": "UNAVAILABLE"}
         try:
             return self.doctrine_lifecycle_store.status_snapshot()
+        except Exception as exc:
+            return {"status": "ERROR", "detail": str(exc)}
+
+    def ml_status_snapshot(self) -> dict[str, object]:
+        try:
+            registry = ModelRunRegistry(session_factory=self.session_factory)
+            reporter = ValidationReporter(registry=registry)
+            return reporter.latest_status()
         except Exception as exc:
             return {"status": "ERROR", "detail": str(exc)}
 

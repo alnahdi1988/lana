@@ -25,6 +25,24 @@ class _StubProductApp:
             "closed_trades": 0,
         }
 
+    def ml_status_snapshot(self):
+        return {
+            "status": "PROMOTED",
+            "model_version": "model-v1",
+            "feature_set_version": "lifecycle_v1",
+            "promoted_at": "2026-03-11T12:00:00+00:00",
+            "training_window_start": "2026-03-10T00:00:00+00:00",
+            "training_window_end": "2026-03-10T20:00:00+00:00",
+            "validation_window_start": "2026-03-10T21:00:00+00:00",
+            "validation_window_end": "2026-03-11T06:00:00+00:00",
+            "validation_row_count": 12,
+            "precision": 0.6,
+            "recall": 0.5,
+            "brier_score": 0.11,
+            "roc_auc": 0.72,
+            "recommendation": "RECOMMEND_PROMOTE",
+        }
+
     def recent_trades(self, **kwargs):
         ticker = kwargs.get("ticker", "TEST") or "TEST"
         return [
@@ -203,6 +221,9 @@ def test_operator_web_renders_latest_state(tmp_path):
     assert "11.2000" in response.text
     assert "PENDING" in response.text
     assert "Doctrine Trades" in response.text
+    assert "ML Status" in response.text
+    assert "model-v1" in response.text
+    assert "RECOMMEND_PROMOTE" in response.text
     health = client.get("/health")
     assert health.status_code == 200
     assert health.json()["latest_run"]["run_status"] == "SUCCESS"
@@ -332,6 +353,7 @@ def test_operator_web_renders_suppressed_history_symbol_detail_and_recent_errors
     response = client.get("/")
     assert response.status_code == 200
     assert "GRADE_NOT_SENDABLE" in response.text
+    assert "model-v1" in response.text
     assert "FAILED" in response.text
     assert "telegram down" in response.text
     assert "workflow warning" in response.text
@@ -350,3 +372,8 @@ def test_operator_web_renders_suppressed_history_symbol_detail_and_recent_errors
     assert "Doctrine-qualified setups tracked for ML labels" in trades_page.text
     assert "10.0000 - 10.5000" in trades_page.text
     assert "trade-symbol" in trades_page.text
+
+    settings_page = client.get("/settings")
+    assert settings_page.status_code == 200
+    assert "ML Status" in settings_page.text
+    assert "lifecycle_v1" in settings_page.text

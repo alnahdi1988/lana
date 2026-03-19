@@ -144,13 +144,14 @@ class SignalEngine:
         event_risk_clear = not event_risk_blocked and not event_risk_incomplete_block
         event_risk_code = "EVENT_RISK_CLEAR" if event_risk_clear else "EVENT_RISK_BLOCKED"
 
-        confidence = self._compute_confidence(
+        confidence_components = self._compute_confidence_components(
             signal_input=signal_input,
             bias_htf=bias_htf,
             internal_mtf_state=internal_mtf_state,
             ltf_trigger_state=ltf_trigger_state,
             cross_frame_aligned=cross_frame_aligned,
         )
+        confidence = self._sum_confidence_components(confidence_components)
 
         hard_gates = {
             "price_in_range": price_in_range,
@@ -233,6 +234,10 @@ class SignalEngine:
                 "micro_present": micro_present,
                 "micro_used_for_confirmation": micro_used,
                 "cross_frame_aligned": cross_frame_aligned,
+                "confidence_components": {
+                    key: format(value, "f")
+                    for key, value in confidence_components.items()
+                },
                 "consumed_known_at": [known_at.isoformat() for known_at in self._consumed_known_ats(signal_input)],
                 "regime_snapshot": {
                     "market_regime": signal_input.regime.market_regime,
@@ -373,17 +378,28 @@ class SignalEngine:
             for event in result.events_on_bar
         )
 
-    def _compute_confidence(
+    def _compute_confidence_components(
         self,
         signal_input: SignalEngineInput,
         bias_htf: SignalBias,
         internal_mtf_state: str,
         ltf_trigger_state: LTFTriggerState,
         cross_frame_aligned: bool,
-    ) -> Decimal:
-        score = Decimal("0")
+    ) -> dict[str, Decimal]:
+        components: dict[str, Decimal] = {
+            "htf_bias": Decimal("0"),
+            "mtf_state": Decimal("0"),
+            "ltf_trigger": Decimal("0"),
+            "cross_frame_alignment": Decimal("0"),
+            "zone_location": Decimal("0"),
+            "compression": Decimal("0"),
+            "displacement": Decimal("0"),
+            "regime_permission": Decimal("0"),
+            "sector_strength": Decimal("0"),
+            "event_risk_penalty": Decimal("0"),
+        }
         if bias_htf == "BULLISH":
-            score += self.config.htf_bullish_weight
+            components["htf_bias"] = self.config.htf_bullish_weight
 
         mtf_scores = {
             "RECONTAINMENT_CANDIDATE": self.config.mtf_weight_recontainment,
@@ -391,7 +407,7 @@ class SignalEngine:
             "DISCOUNT_RESPONSE": self.config.mtf_weight_discount,
             "EQUILIBRIUM_HOLD": self.config.mtf_weight_equilibrium,
         }
-        score += mtf_scores.get(internal_mtf_state, Decimal("0"))
+        components["mtf_state"] = mtf_scores.get(internal_mtf_state, Decimal("0"))
 
         ltf_scores = {
             "TRAP_REVERSE_BULLISH": self.config.ltf_weight_trap_reverse,
@@ -400,23 +416,23 @@ class SignalEngine:
             "LTF_BULLISH_CHOCH": self.config.ltf_weight_choch,
             "LTF_BULLISH_BOS": self.config.ltf_weight_bos,
         }
-        score += ltf_scores.get(ltf_trigger_state, Decimal("0"))
+        components["ltf_trigger"] = ltf_scores.get(ltf_trigger_state, Decimal("0"))
 
         if cross_frame_aligned:
-            score += self.config.cross_frame_alignment_bonus
+            components["cross_frame_alignment"] = self.config.cross_frame_alignment_bonus
 
         if signal_input.mtf.zone.zone_location == "DISCOUNT":
-            score += self.config.discount_zone_bonus
+            components["zone_location"] = self.config.discount_zone_bonus
         elif signal_input.mtf.zone.zone_location == "EQUILIBRIUM":
-            score += self.config.equilibrium_zone_bonus
+            components["zone_location"] = self.config.equilibrium_zone_bonus
 
         if signal_input.mtf.pattern.compression.status == "COMPRESSED":
-            score += self.config.compression_bonus
+            components["compression"] = self.config.compression_bonus
         if (
             signal_input.htf.pattern.bullish_displacement.status in {"NEW_EVENT", "ACTIVE"}
             or signal_input.mtf.pattern.bullish_displacement.status in {"NEW_EVENT", "ACTIVE"}
         ):
-            score += self.config.displacement_bonus
+            components["displacement"] = self.config.displacement_bonus
 
         if signal_input.regime.allows_longs is True:
             if (
@@ -425,9 +441,9 @@ class SignalEngine:
                 and signal_input.regime.sector_permission_score is not None
                 and signal_input.regime.sector_permission_score >= self.config.regime_sector_permission_strong_threshold
             ):
-                score += self.config.regime_permission_strong_bonus
+                components["regime_permission"] = self.config.regime_permission_strong_bonus
             else:
-                score += self.config.regime_permission_supportive_bonus
+                components["regime_permission"] = self.config.regime_permission_supportive_bonus
 
         sector_scores = {
             "STRONG": self.config.sector_strength_bonus_strong,
@@ -435,8 +451,16 @@ class SignalEngine:
             "WEAK": self.config.sector_strength_bonus_weak,
             "UNKNOWN": self.config.sector_strength_bonus_unknown,
         }
-        score += sector_scores[signal_input.sector_context.sector_strength]
-        score -= min(self.config.max_event_risk_soft_penalty, signal_input.event_risk.soft_penalty)
+        components["sector_strength"] = sector_scores[signal_input.sector_context.sector_strength]
+        components["event_risk_penalty"] = -min(
+            self.config.max_event_risk_soft_penalty,
+            signal_input.event_risk.soft_penalty,
+        )
+        return components
+
+    @staticmethod
+    def _sum_confidence_components(components: dict[str, Decimal]) -> Decimal:
+        score = sum(components.values(), Decimal("0"))
         return max(Decimal("0.00"), min(Decimal("1.00"), score.quantize(Decimal("0.0001"))))
 
     def _mtf_reason_code(self, internal_mtf_state: str) -> str:

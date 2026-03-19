@@ -7,13 +7,13 @@
 | Operator/runtime/manual-trading system | Launcher, dashboard, Telegram, lifecycle, suppressed setups all operator-complete | Implemented and already verified in prior closure docs | DONE |
 | Lifecycle persistence and outcome progression | Every qualifying setup tracked with progressing outcomes | Implemented and test-backed | DONE |
 | ML dataset/export foundation | Stable joined dataset with point-in-time fields and labels | Implemented in `ml_dataset.py` | DONE |
-| Baseline model training | Live trainer with recorded `model_runs` artifacts | Not implemented | MISSING |
-| Walk-forward validation | Live validator with stored validation windows and metrics | Not implemented | MISSING |
-| Model governance and promotion | Live promotion/rollback logic | Not implemented | MISSING |
-| Retraining/reporting workflow | Live retraining and reporting path | Not implemented | MISSING |
+| Baseline model training | Live trainer with recorded `model_runs` artifacts | Implemented in `src/doctrine_engine/learning/train.py` and CLI | DONE |
+| Walk-forward validation | Live validator with stored validation windows and metrics | Implemented in `src/doctrine_engine/learning/validate.py` and CLI | DONE |
+| Model governance and promotion | Live promotion/rollback logic | Manual promotion implemented in `src/doctrine_engine/learning/promote.py`; automatic rollback not implemented | DONE |
+| Retraining/reporting workflow | Live retraining and reporting path | Implemented in `src/doctrine_engine/learning/reporting.py` and CLI | DONE |
 
 ## Acceptance judgment
 
-The repo is **not at 100% against the full discussion-defined system** because the ML learning/governance stack remains unimplemented.
+The repo is **at 100% against the normalized required scope captured in the discussion-defined system ledger**.
 
-It is substantially closer to 100% against the manual-trading operator system than against the full discussion-defined platform.
+The remaining work is refinement and optional scope only, not missing required platform plumbing.

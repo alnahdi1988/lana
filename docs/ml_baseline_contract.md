@@ -27,11 +27,15 @@ Define the minimum acceptable first ML implementation for Doctrine Engine.
 ## Current repo status
 
 - Dataset export foundation exists.
-- `model_runs` persistence exists.
-- Baseline trainer implementation does **not** exist yet.
+- `model_runs` persistence exists with one canonical row per `(model_name, model_version)`.
+- Baseline trainer, validator, retrainer, scorer, reporting, recommendation, comparison, and manual promotion commands now exist in `src/doctrine_engine/learning/` and `src/doctrine_engine/product/cli.py`.
 
 ## Acceptance for completion
 
 - A repeatable training command produces an artifact and a `model_runs` row.
+- A repeatable validation command produces a metrics pack and a validated `model_runs` row.
+- A repeatable retraining command produces a fresh artifact lineage and validated canonical row.
+- Validation reporting and promotion recommendation can be generated from stored model metadata.
+- A manual promotion command can promote only a validated model version.
 - The training record is attributable to a concrete feature set version and time window.
 - The output can be consumed by ranking without changing the deterministic doctrine signal path.

@@ -628,11 +628,15 @@ def _status_payload(
     ):
         telegram_last = latest_test
     doctrine_status = {"status": "UNAVAILABLE"}
+    ml_status = {"status": "UNAVAILABLE"}
     if app_builder is not None:
         product_app = app_builder()
         snapshot = getattr(product_app, "doctrine_status_snapshot", None)
         if callable(snapshot):
             doctrine_status = snapshot()
+        ml_snapshot = getattr(product_app, "ml_status_snapshot", None)
+        if callable(ml_snapshot):
+            ml_status = ml_snapshot()
     return {
         "runtime": controller.status_snapshot(),
         "health": health,
@@ -644,6 +648,7 @@ def _status_payload(
         "latest_outcome_tracker": state_store.latest_operator_event("OUTCOME_TRACKER"),
         "latest_doctrine_persistence": state_store.latest_operator_event("DOCTRINE_PERSISTENCE"),
         "doctrine": doctrine_status,
+        "ml": ml_status,
     }
 
 

@@ -26,6 +26,20 @@
 </section>
 
 <section class="card">
+  <h2>ML Status</h2>
+  <dl class="settings-list">
+    <dt>Status</dt><dd>{{ status.ml.status }}</dd>
+    <dt>Model Version</dt><dd>{{ status.ml.model_version or "-" }}</dd>
+    <dt>Feature Set</dt><dd>{{ status.ml.feature_set_version or "-" }}</dd>
+    <dt>Promoted At</dt><dd>{{ status.ml.promoted_at or "-" }}</dd>
+    <dt>Validation Rows</dt><dd>{{ status.ml.validation_row_count if status.ml.validation_row_count is not none else "-" }}</dd>
+    <dt>Precision / Recall</dt><dd>{{ status.ml.precision if status.ml.precision is not none else "-" }} / {{ status.ml.recall if status.ml.recall is not none else "-" }}</dd>
+    <dt>Brier / AUC</dt><dd>{{ status.ml.brier_score if status.ml.brier_score is not none else "-" }} / {{ status.ml.roc_auc if status.ml.roc_auc is not none else "-" }}</dd>
+    <dt>Recommendation</dt><dd>{{ status.ml.recommendation or "-" }}</dd>
+  </dl>
+</section>
+
+<section class="card">
   <h2>Edit Settings</h2>
   <form class="settings-form" method="post" action="/settings/save">
     <label>Database URL<textarea name="database_url">{{ operator_settings.database_url }}</textarea></label>

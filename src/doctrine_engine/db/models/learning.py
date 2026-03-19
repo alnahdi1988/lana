@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String
+from sqlalchemy import Boolean, DateTime, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -11,6 +11,10 @@ from doctrine_engine.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 class ModelRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "model_runs"
+    __mapper_args__ = {"confirm_deleted_rows": False}
+    __table_args__ = (
+        UniqueConstraint("model_name", "model_version", name="uq_model_runs_model_name_model_version"),
+    )
 
     model_name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     model_version: Mapped[str] = mapped_column(String(64), nullable=False)

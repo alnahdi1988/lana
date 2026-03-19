@@ -262,6 +262,9 @@ def test_doctrine_lifecycle_store_backfills_missing_outcome_for_existing_signal(
     assert summary.initialized_outcomes == 1
     assert summary.skipped_existing == 1
     assert existing_signal.id in fake_session.outcomes
+    assert existing_signal.extensible_context["market_regime"] == "BULLISH_TREND"
+    assert existing_signal.extensible_context["alert_state"] == setup.decision_result.alert_state
+    assert existing_signal.reason_codes == ["PRICE_RANGE_VALID"]
 
 
 def test_doctrine_lifecycle_store_updates_outcome_labels_from_delayed_bars():

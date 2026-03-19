@@ -26,6 +26,22 @@
 </section>
 
 <section class="card">
+  <h2>ML Status</h2>
+  <dl class="settings-list">
+    <dt>Status</dt><dd>{{ status.ml.status }}</dd>
+    <dt>Model Version</dt><dd>{{ status.ml.model_version or "-" }}</dd>
+    <dt>Feature Set</dt><dd>{{ status.ml.feature_set_version or "-" }}</dd>
+    <dt>Promoted At</dt><dd>{{ status.ml.promoted_at or "-" }}</dd>
+    <dt>Training Window</dt><dd>{{ (status.ml.training_window_start or "-") ~ " -> " ~ (status.ml.training_window_end or "-") }}</dd>
+    <dt>Validation Window</dt><dd>{{ (status.ml.validation_window_start or "-") ~ " -> " ~ (status.ml.validation_window_end or "-") }}</dd>
+    <dt>Validation Rows</dt><dd>{{ status.ml.validation_row_count if status.ml.validation_row_count is not none else "-" }}</dd>
+    <dt>Precision / Recall</dt><dd>{{ status.ml.precision if status.ml.precision is not none else "-" }} / {{ status.ml.recall if status.ml.recall is not none else "-" }}</dd>
+    <dt>Brier / AUC</dt><dd>{{ status.ml.brier_score if status.ml.brier_score is not none else "-" }} / {{ status.ml.roc_auc if status.ml.roc_auc is not none else "-" }}</dd>
+    <dt>Recommendation</dt><dd>{{ status.ml.recommendation or "-" }}</dd>
+  </dl>
+</section>
+
+<section class="card">
   <h2>Recent Runs</h2>
   {% set runs = recent_runs %}
   {% include "partials/runs_table.html" %}

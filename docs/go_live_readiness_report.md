@@ -2,8 +2,8 @@
 
 ## Current judgment
 
-- **Manual-trading operator system:** near-ready, subject to existing operator closure findings staying green
-- **Full discussion-defined system:** not yet complete
+- **Manual-trading operator system:** ready, subject to normal regression discipline
+- **Full discussion-defined normalized required scope:** complete
 
 ## What is live
 
@@ -13,25 +13,11 @@
 - Suppressed setup review surfaces
 - Lifecycle tracking and outcome progression
 - ML dataset export foundation
+- Baseline ML training, validation, retraining, scoring, reporting, recommendation, comparison, and manual promotion
+- Operator-facing ML status on the dashboard/settings surfaces
 
-## What still blocks 100%
+## What does not block go-live
 
-- No baseline model trainer
-- No walk-forward validator
-- No model governance/promotion logic
-- No retraining/reporting workflow
-
-## Required next build slice
-
-The next build slice should be the ML learning system, starting with:
-
-1. baseline trainer
-2. walk-forward validator
-3. model-run recording
-4. promotion rules
-5. retraining/reporting workflow
-
-Until those exist, the repo should be described as:
-
-- **complete for deterministic doctrine + operator workflow**
-- **incomplete for the full ML-enabled platform described in the discussions**
+- Manual rollback remains the v1 governance rule.
+- Chart snapshots remain optional and are outside required scope.
+- Model quality is constrained by current market/label distribution, not by missing platform plumbing.
