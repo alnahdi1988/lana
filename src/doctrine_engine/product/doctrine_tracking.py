@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Iterable
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from doctrine_engine.alerts.models import AlertDecisionResult
@@ -70,78 +71,23 @@ class DoctrineLifecycleStore:
             for setup in setups:
                 if setup.signal_result.signal != "LONG":
                     continue
-                signal = session.get(Signal, setup.signal_id)
+                signal = self._find_existing_signal(session, setup)
+                signal_created = False
                 if signal is None:
-                    signal = Signal(
-                        id=setup.signal_id,
-                        symbol_id=setup.signal_result.symbol_id,
-                        universe_snapshot_id=setup.signal_result.universe_snapshot_id,
-                        signal_timestamp=setup.signal_result.signal_timestamp,
-                        known_at=setup.signal_result.known_at,
-                        htf_bar_timestamp=setup.signal_result.htf_bar_timestamp,
-                        mtf_bar_timestamp=setup.signal_result.mtf_bar_timestamp,
-                        ltf_bar_timestamp=setup.signal_result.ltf_bar_timestamp,
-                        signal=SignalValue(setup.signal_result.signal),
-                        signal_version=setup.signal_result.signal_version,
-                        confidence=setup.signal_result.confidence,
-                        grade=SignalGrade(setup.signal_result.grade),
-                        bias_htf=HTFBias(setup.signal_result.bias_htf),
-                        setup_state=setup.signal_result.setup_state,
-                        reason_codes=list(setup.signal_result.reason_codes),
-                        event_risk_blocked=setup.signal_result.event_risk_blocked,
-                        extensible_context={
-                            **dict(setup.signal_result.extensible_context),
-                            "run_id": str(setup.run_id),
-                            "alert_state": setup.decision_result.alert_state,
-                            "suppression_reason": setup.decision_result.suppression_reason,
-                            "telegram_sendable": setup.decision_result.send,
-                        },
-                    )
-                    session.add(signal)
+                    signal, signal_created = self._insert_signal(session, setup)
+                if signal_created:
                     recorded_signals += 1
-                else:
+                elif signal is not None:
                     skipped_existing += 1
 
-                existing_plan = session.scalar(select(TradePlan).where(TradePlan.signal_id == setup.signal_id))
+                existing_plan = session.scalar(select(TradePlan).where(TradePlan.signal_id == signal.id))
                 if existing_plan is None:
-                    session.add(
-                        TradePlan(
-                            signal_id=setup.signal_id,
-                            plan_timestamp=setup.trade_plan_result.plan_timestamp,
-                            known_at=setup.trade_plan_result.known_at,
-                            entry_type=EntryType(setup.trade_plan_result.entry_type),
-                            entry_zone_low=setup.trade_plan_result.entry_zone_low,
-                            entry_zone_high=setup.trade_plan_result.entry_zone_high,
-                            confirmation_level=setup.trade_plan_result.confirmation_level,
-                            invalidation_level=setup.trade_plan_result.invalidation_level,
-                            tp1=setup.trade_plan_result.tp1,
-                            tp2=setup.trade_plan_result.tp2,
-                            trail_mode=TrailMode(setup.trade_plan_result.trail_mode),
-                            plan_reason_codes=list(setup.trade_plan_result.plan_reason_codes),
-                            extensible_context={
-                                **dict(setup.trade_plan_result.extensible_context),
-                                "operator_summary": setup.decision_result.payload.operator_summary,
-                                "alert_state": setup.decision_result.alert_state,
-                                "payload_fingerprint": setup.decision_result.payload_fingerprint,
-                            },
-                        )
-                    )
+                    session.add(self._build_trade_plan(signal_id=signal.id, setup=setup))
                     recorded_trade_plans += 1
 
-                existing_outcome = session.scalar(select(Outcome).where(Outcome.signal_id == setup.signal_id))
+                existing_outcome = session.scalar(select(Outcome).where(Outcome.signal_id == signal.id))
                 if existing_outcome is None:
-                    session.add(
-                        Outcome(
-                            signal_id=setup.signal_id,
-                            evaluation_status=EvaluationStatus.PENDING,
-                            evaluation_start=setup.trade_plan_result.plan_timestamp,
-                            extensible_context={
-                                "tracking_timeframe": self.tracking_timeframe.value,
-                                "time_barrier_bars": self.time_barrier_bars,
-                                "entry_reference_mode": ENTRY_REFERENCE_MODE,
-                            },
-                        )
-                    )
+                    session.add(self._build_outcome(signal_id=signal.id, setup=setup))
                     initialized_outcomes += 1
             session.commit()
         return DoctrinePersistenceSummary(
@@ -404,7 +350,95 @@ class DoctrineLifecycleStore:
             "run_id": signal.extensible_context.get("run_id"),
         }
 
+    def _find_existing_signal(self, session: Session, setup: QualifyingSetupRecord) -> Signal | None:
+        signal = session.scalar(
+            select(Signal).where(
+                Signal.symbol_id == setup.signal_result.symbol_id,
+                Signal.signal_timestamp == setup.signal_result.signal_timestamp,
+            )
+        )
+        if signal is not None:
+            return signal
+        return session.get(Signal, setup.signal_id)
+
+    def _insert_signal(self, session: Session, setup: QualifyingSetupRecord) -> tuple[Signal, bool]:
+        signal = self._build_signal(setup)
+        begin_nested = getattr(session, "begin_nested", None)
+        if callable(begin_nested):
+            try:
+                with begin_nested():
+                    session.add(signal)
+                    session.flush()
+                return signal, True
+            except IntegrityError:
+                signal = self._find_existing_signal(session, setup)
+                if signal is None:
+                    raise
+                return signal, False
+        session.add(signal)
+        return signal, True
+
+    def _build_signal(self, setup: QualifyingSetupRecord) -> Signal:
+        return Signal(
+            id=setup.signal_id,
+            symbol_id=setup.signal_result.symbol_id,
+            universe_snapshot_id=setup.signal_result.universe_snapshot_id,
+            signal_timestamp=setup.signal_result.signal_timestamp,
+            known_at=setup.signal_result.known_at,
+            htf_bar_timestamp=setup.signal_result.htf_bar_timestamp,
+            mtf_bar_timestamp=setup.signal_result.mtf_bar_timestamp,
+            ltf_bar_timestamp=setup.signal_result.ltf_bar_timestamp,
+            signal=SignalValue(setup.signal_result.signal),
+            signal_version=setup.signal_result.signal_version,
+            confidence=setup.signal_result.confidence,
+            grade=SignalGrade(setup.signal_result.grade),
+            bias_htf=HTFBias(setup.signal_result.bias_htf),
+            setup_state=setup.signal_result.setup_state,
+            reason_codes=list(setup.signal_result.reason_codes),
+            event_risk_blocked=setup.signal_result.event_risk_blocked,
+            extensible_context={
+                **dict(setup.signal_result.extensible_context),
+                "run_id": str(setup.run_id),
+                "alert_state": setup.decision_result.alert_state,
+                "suppression_reason": setup.decision_result.suppression_reason,
+                "telegram_sendable": setup.decision_result.send,
+            },
+        )
+
+    def _build_trade_plan(self, *, signal_id: uuid.UUID, setup: QualifyingSetupRecord) -> TradePlan:
+        return TradePlan(
+            signal_id=signal_id,
+            plan_timestamp=setup.trade_plan_result.plan_timestamp,
+            known_at=setup.trade_plan_result.known_at,
+            entry_type=EntryType(setup.trade_plan_result.entry_type),
+            entry_zone_low=setup.trade_plan_result.entry_zone_low,
+            entry_zone_high=setup.trade_plan_result.entry_zone_high,
+            confirmation_level=setup.trade_plan_result.confirmation_level,
+            invalidation_level=setup.trade_plan_result.invalidation_level,
+            tp1=setup.trade_plan_result.tp1,
+            tp2=setup.trade_plan_result.tp2,
+            trail_mode=TrailMode(setup.trade_plan_result.trail_mode),
+            plan_reason_codes=list(setup.trade_plan_result.plan_reason_codes),
+            extensible_context={
+                **dict(setup.trade_plan_result.extensible_context),
+                "operator_summary": setup.decision_result.payload.operator_summary,
+                "alert_state": setup.decision_result.alert_state,
+                "payload_fingerprint": setup.decision_result.payload_fingerprint,
+            },
+        )
+
+    def _build_outcome(self, *, signal_id: uuid.UUID, setup: QualifyingSetupRecord) -> Outcome:
+        return Outcome(
+            signal_id=signal_id,
+            evaluation_status=EvaluationStatus.PENDING,
+            evaluation_start=setup.trade_plan_result.plan_timestamp,
+            extensible_context={
+                "tracking_timeframe": self.tracking_timeframe.value,
+                "time_barrier_bars": self.time_barrier_bars,
+                "entry_reference_mode": ENTRY_REFERENCE_MODE,
+            },
+        )
+
 
 def _entry_reference_price(entry_zone_low: Decimal, entry_zone_high: Decimal) -> Decimal:
     return (Decimal(entry_zone_low) + Decimal(entry_zone_high)) / Decimal("2")
-

@@ -33,6 +33,36 @@ class SignalEngineConfig:
     grade_a_plus_threshold: Decimal = Decimal("0.90")
     grade_a_threshold: Decimal = Decimal("0.80")
     grade_b_threshold: Decimal = Decimal("0.70")
+    universe_min_price: Decimal = Decimal("5")
+    universe_max_price: Decimal = Decimal("50")
+    htf_timeframe: str = "4H"
+    mtf_timeframe: str = "1H"
+    ltf_timeframe: str = "15M"
+    micro_timeframe: str = "5M"
+    htf_bullish_weight: Decimal = Decimal("0.20")
+    mtf_weight_recontainment: Decimal = Decimal("0.20")
+    mtf_weight_reclaim: Decimal = Decimal("0.20")
+    mtf_weight_discount: Decimal = Decimal("0.16")
+    mtf_weight_equilibrium: Decimal = Decimal("0.14")
+    ltf_weight_trap_reverse: Decimal = Decimal("0.15")
+    ltf_weight_fake_breakdown: Decimal = Decimal("0.14")
+    ltf_weight_reclaim: Decimal = Decimal("0.12")
+    ltf_weight_choch: Decimal = Decimal("0.10")
+    ltf_weight_bos: Decimal = Decimal("0.08")
+    cross_frame_alignment_bonus: Decimal = Decimal("0.10")
+    discount_zone_bonus: Decimal = Decimal("0.05")
+    equilibrium_zone_bonus: Decimal = Decimal("0.03")
+    compression_bonus: Decimal = Decimal("0.03")
+    displacement_bonus: Decimal = Decimal("0.02")
+    regime_market_permission_strong_threshold: Decimal = Decimal("0.70")
+    regime_sector_permission_strong_threshold: Decimal = Decimal("0.60")
+    regime_permission_strong_bonus: Decimal = Decimal("0.05")
+    regime_permission_supportive_bonus: Decimal = Decimal("0.02")
+    sector_strength_bonus_strong: Decimal = Decimal("0.03")
+    sector_strength_bonus_neutral: Decimal = Decimal("0.01")
+    sector_strength_bonus_weak: Decimal = Decimal("0.00")
+    sector_strength_bonus_unknown: Decimal = Decimal("0.00")
+    max_event_risk_soft_penalty: Decimal = Decimal("0.10")
 
 
 class SignalEngine:
@@ -42,7 +72,7 @@ class SignalEngine:
     def evaluate(self, signal_input: SignalEngineInput) -> SignalEngineResult:
         self._validate_input(signal_input)
 
-        price_in_range = Decimal("5") <= signal_input.price_reference <= Decimal("50")
+        price_in_range = self.config.universe_min_price <= signal_input.price_reference <= self.config.universe_max_price
         price_code = "PRICE_RANGE_VALID" if price_in_range else "PRICE_OUT_OF_RANGE"
         universe_code = "UNIVERSE_ELIGIBLE" if signal_input.universe_eligible else "UNIVERSE_REJECTED"
 
@@ -226,9 +256,9 @@ class SignalEngine:
 
     def _validate_input(self, signal_input: SignalEngineInput) -> None:
         frame_expectations = {
-            "4H": signal_input.htf,
-            "1H": signal_input.mtf,
-            "15M": signal_input.ltf,
+            self.config.htf_timeframe: signal_input.htf,
+            self.config.mtf_timeframe: signal_input.mtf,
+            self.config.ltf_timeframe: signal_input.ltf,
         }
         for timeframe, frame in frame_expectations.items():
             if frame.timeframe != timeframe:
@@ -238,8 +268,8 @@ class SignalEngine:
             if frame.structure_history[-1].bar_timestamp != frame.structure.bar_timestamp:
                 raise ValueError(f"{timeframe} latest structure must match structure_history[-1].")
         if signal_input.micro is not None:
-            if signal_input.micro.timeframe != "5M":
-                raise ValueError("Micro input must use timeframe 5M.")
+            if signal_input.micro.timeframe != self.config.micro_timeframe:
+                raise ValueError(f"Micro input must use timeframe {self.config.micro_timeframe}.")
             if not signal_input.micro.structure_history:
                 raise ValueError("5M structure history cannot be empty when micro input is present.")
             if signal_input.micro.structure_history[-1].bar_timestamp != signal_input.micro.structure.bar_timestamp:
@@ -344,60 +374,60 @@ class SignalEngine:
     ) -> Decimal:
         score = Decimal("0")
         if bias_htf == "BULLISH":
-            score += Decimal("0.20")
+            score += self.config.htf_bullish_weight
 
         mtf_scores = {
-            "RECONTAINMENT_CANDIDATE": Decimal("0.20"),
-            "BULLISH_RECLAIM": Decimal("0.20"),
-            "DISCOUNT_RESPONSE": Decimal("0.16"),
-            "EQUILIBRIUM_HOLD": Decimal("0.14"),
+            "RECONTAINMENT_CANDIDATE": self.config.mtf_weight_recontainment,
+            "BULLISH_RECLAIM": self.config.mtf_weight_reclaim,
+            "DISCOUNT_RESPONSE": self.config.mtf_weight_discount,
+            "EQUILIBRIUM_HOLD": self.config.mtf_weight_equilibrium,
         }
         score += mtf_scores.get(internal_mtf_state, Decimal("0"))
 
         ltf_scores = {
-            "TRAP_REVERSE_BULLISH": Decimal("0.15"),
-            "FAKE_BREAKDOWN_REVERSAL": Decimal("0.14"),
-            "LTF_BULLISH_RECLAIM": Decimal("0.12"),
-            "LTF_BULLISH_CHOCH": Decimal("0.10"),
-            "LTF_BULLISH_BOS": Decimal("0.08"),
+            "TRAP_REVERSE_BULLISH": self.config.ltf_weight_trap_reverse,
+            "FAKE_BREAKDOWN_REVERSAL": self.config.ltf_weight_fake_breakdown,
+            "LTF_BULLISH_RECLAIM": self.config.ltf_weight_reclaim,
+            "LTF_BULLISH_CHOCH": self.config.ltf_weight_choch,
+            "LTF_BULLISH_BOS": self.config.ltf_weight_bos,
         }
         score += ltf_scores.get(ltf_trigger_state, Decimal("0"))
 
         if cross_frame_aligned:
-            score += Decimal("0.10")
+            score += self.config.cross_frame_alignment_bonus
 
         if signal_input.mtf.zone.zone_location == "DISCOUNT":
-            score += Decimal("0.05")
+            score += self.config.discount_zone_bonus
         elif signal_input.mtf.zone.zone_location == "EQUILIBRIUM":
-            score += Decimal("0.03")
+            score += self.config.equilibrium_zone_bonus
 
         if signal_input.mtf.pattern.compression.status == "COMPRESSED":
-            score += Decimal("0.03")
+            score += self.config.compression_bonus
         if (
             signal_input.htf.pattern.bullish_displacement.status in {"NEW_EVENT", "ACTIVE"}
             or signal_input.mtf.pattern.bullish_displacement.status in {"NEW_EVENT", "ACTIVE"}
         ):
-            score += Decimal("0.02")
+            score += self.config.displacement_bonus
 
         if signal_input.regime.allows_longs is True:
             if (
                 signal_input.regime.market_permission_score is not None
-                and signal_input.regime.market_permission_score >= Decimal("0.70")
+                and signal_input.regime.market_permission_score >= self.config.regime_market_permission_strong_threshold
                 and signal_input.regime.sector_permission_score is not None
-                and signal_input.regime.sector_permission_score >= Decimal("0.60")
+                and signal_input.regime.sector_permission_score >= self.config.regime_sector_permission_strong_threshold
             ):
-                score += Decimal("0.05")
+                score += self.config.regime_permission_strong_bonus
             else:
-                score += Decimal("0.02")
+                score += self.config.regime_permission_supportive_bonus
 
         sector_scores = {
-            "STRONG": Decimal("0.03"),
-            "NEUTRAL": Decimal("0.01"),
-            "WEAK": Decimal("0.00"),
-            "UNKNOWN": Decimal("0.00"),
+            "STRONG": self.config.sector_strength_bonus_strong,
+            "NEUTRAL": self.config.sector_strength_bonus_neutral,
+            "WEAK": self.config.sector_strength_bonus_weak,
+            "UNKNOWN": self.config.sector_strength_bonus_unknown,
         }
         score += sector_scores[signal_input.sector_context.sector_strength]
-        score -= min(Decimal("0.10"), signal_input.event_risk.soft_penalty)
+        score -= min(self.config.max_event_risk_soft_penalty, signal_input.event_risk.soft_penalty)
         return max(Decimal("0.00"), min(Decimal("1.00"), score.quantize(Decimal("0.0001"))))
 
     def _mtf_reason_code(self, internal_mtf_state: str) -> str:

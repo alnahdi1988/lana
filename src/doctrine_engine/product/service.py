@@ -4,7 +4,7 @@ import hashlib
 import logging
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Callable
@@ -159,6 +159,8 @@ class DoctrineProductApp:
             )
 
     def build_runner_config(self) -> RunnerConfig:
+        if hasattr(self.settings, "build_runner_config"):
+            return self.settings.build_runner_config()
         return RunnerConfig(
             run_mode="ONCE",
             universe=UniverseSelectionConfig(max_symbols_per_run=self.settings.polygon_universe_refresh_limit),
@@ -271,6 +273,7 @@ class DoctrineProductApp:
                 for record in workflow_wrapper.records
                 if record.workflow_input.signal_result.signal == "LONG"
             ]
+            degraded_stage_failures: list[str] = []
             try:
                 persistence_summary = self.doctrine_lifecycle_store.record_qualifying_setups(qualifying_setups)
                 self.state_store.record_operator_event(
@@ -286,6 +289,8 @@ class DoctrineProductApp:
                     },
                 )
             except Exception as exc:
+                LOGGER.exception("Doctrine persistence failed for run %s.", runner_result.run_id)
+                degraded_stage_failures.append("DOCTRINE_PERSISTENCE")
                 self.state_store.record_error(
                     run_id=runner_result.run_id,
                     symbol_id=None,
@@ -317,6 +322,8 @@ class DoctrineProductApp:
                     },
                 )
             except Exception as exc:
+                LOGGER.exception("Outcome tracking failed for run %s.", runner_result.run_id)
+                degraded_stage_failures.append("OUTCOME_TRACKER")
                 self.state_store.record_error(
                     run_id=runner_result.run_id,
                     symbol_id=None,
@@ -330,6 +337,8 @@ class DoctrineProductApp:
                     detail=str(exc),
                     metadata={"run_id": str(runner_result.run_id)},
                 )
+            if degraded_stage_failures and runner_result.run_status != "FAILED":
+                runner_result = replace(runner_result, run_status="DEGRADED")
 
         self.state_store.record_run(
             runner_result=runner_result,

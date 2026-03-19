@@ -17,6 +17,9 @@ class _FakeSession:
     def __init__(self, *, scalars_rows=None):
         self.scalars_rows = list(scalars_rows or [])
         self.added: list[object] = []
+        self.signals: dict[uuid.UUID, Signal] = {}
+        self.trade_plans: dict[uuid.UUID, TradePlan] = {}
+        self.outcomes: dict[uuid.UUID, Outcome] = {}
 
     def __enter__(self):
         return self
@@ -25,19 +28,67 @@ class _FakeSession:
         return False
 
     def get(self, model, key):
+        if model is Signal:
+            return self.signals.get(key)
+        if model is TradePlan:
+            return self.trade_plans.get(key)
+        if model is Outcome:
+            return self.outcomes.get(key)
         return None
 
     def scalar(self, statement):
+        if self.scalars_rows:
+            return self.scalars_rows.pop(0)
+        entity = statement.column_descriptions[0]["entity"]
+        criteria = {}
+        for clause in statement._where_criteria:
+            children = list(clause.get_children())
+            if len(children) == 2 and hasattr(children[0], "key"):
+                criteria[children[0].key] = children[1].value
+        if entity is Signal:
+            for signal in self.signals.values():
+                if all(getattr(signal, key) == value for key, value in criteria.items()):
+                    return signal
+            return None
+        if entity is TradePlan:
+            for trade_plan in self.trade_plans.values():
+                if all(getattr(trade_plan, key) == value for key, value in criteria.items()):
+                    return trade_plan
+            return None
+        if entity is Outcome:
+            for outcome in self.outcomes.values():
+                if all(getattr(outcome, key) == value for key, value in criteria.items()):
+                    return outcome
+            return None
         return None
 
     def add(self, value):
         self.added.append(value)
+        if isinstance(value, Signal):
+            self.signals[value.id] = value
+        elif isinstance(value, TradePlan):
+            self.trade_plans[value.signal_id] = value
+        elif isinstance(value, Outcome):
+            self.outcomes[value.signal_id] = value
 
     def commit(self):
         return None
 
     def scalars(self, statement):
         return iter(self.scalars_rows)
+
+    def begin_nested(self):
+        class _Nested:
+            def __enter__(self_inner):
+                return self
+
+            def __exit__(self_inner, exc_type, exc, tb):
+                return False
+
+        return _Nested()
+
+    def flush(self):
+        return None
 
 
 def _qualifying_setup_record() -> QualifyingSetupRecord:
@@ -118,6 +169,99 @@ def test_doctrine_lifecycle_store_records_suppressed_qualifying_setup():
     assert any(isinstance(item, Signal) for item in fake_session.added)
     assert any(isinstance(item, TradePlan) for item in fake_session.added)
     assert any(isinstance(item, Outcome) for item in fake_session.added)
+
+
+def test_doctrine_lifecycle_store_is_idempotent_for_symbol_and_timestamp():
+    fake_session = _FakeSession()
+    store = DoctrineLifecycleStore(session_factory=lambda: fake_session, time_barrier_bars=20)
+    setup = _qualifying_setup_record()
+    duplicate_setup = QualifyingSetupRecord(
+        run_id=uuid.uuid4(),
+        signal_id=uuid.uuid4(),
+        signal_result=setup.signal_result,
+        trade_plan_result=TradePlanEngineResult(
+            signal_id=uuid.uuid4(),
+            symbol_id=setup.trade_plan_result.symbol_id,
+            ticker=setup.trade_plan_result.ticker,
+            plan_timestamp=setup.trade_plan_result.plan_timestamp,
+            known_at=setup.trade_plan_result.known_at,
+            entry_type=setup.trade_plan_result.entry_type,
+            entry_zone_low=setup.trade_plan_result.entry_zone_low,
+            entry_zone_high=setup.trade_plan_result.entry_zone_high,
+            confirmation_level=setup.trade_plan_result.confirmation_level,
+            invalidation_level=setup.trade_plan_result.invalidation_level,
+            tp1=setup.trade_plan_result.tp1,
+            tp2=setup.trade_plan_result.tp2,
+            trail_mode=setup.trade_plan_result.trail_mode,
+            plan_reason_codes=list(setup.trade_plan_result.plan_reason_codes),
+            extensible_context=dict(setup.trade_plan_result.extensible_context),
+        ),
+        decision_result=setup.decision_result,
+    )
+
+    first = store.record_qualifying_setups([setup])
+    second = store.record_qualifying_setups([duplicate_setup])
+
+    assert first.recorded_signals == 1
+    assert first.recorded_trade_plans == 1
+    assert first.initialized_outcomes == 1
+    assert second.recorded_signals == 0
+    assert second.recorded_trade_plans == 0
+    assert second.initialized_outcomes == 0
+    assert second.skipped_existing == 1
+    assert len(fake_session.signals) == 1
+    assert len(fake_session.trade_plans) == 1
+    assert len(fake_session.outcomes) == 1
+
+
+def test_doctrine_lifecycle_store_backfills_missing_outcome_for_existing_signal():
+    fake_session = _FakeSession()
+    store = DoctrineLifecycleStore(session_factory=lambda: fake_session, time_barrier_bars=20)
+    setup = _qualifying_setup_record()
+    existing_signal = Signal(
+        id=uuid.uuid4(),
+        symbol_id=setup.signal_result.symbol_id,
+        universe_snapshot_id=setup.signal_result.universe_snapshot_id,
+        signal_timestamp=setup.signal_result.signal_timestamp,
+        known_at=setup.signal_result.known_at,
+        htf_bar_timestamp=setup.signal_result.htf_bar_timestamp,
+        mtf_bar_timestamp=setup.signal_result.mtf_bar_timestamp,
+        ltf_bar_timestamp=setup.signal_result.ltf_bar_timestamp,
+        signal="LONG",
+        signal_version=setup.signal_result.signal_version,
+        confidence=setup.signal_result.confidence,
+        grade=setup.signal_result.grade,
+        bias_htf=setup.signal_result.bias_htf,
+        setup_state=setup.signal_result.setup_state,
+        reason_codes=list(setup.signal_result.reason_codes),
+        event_risk_blocked=setup.signal_result.event_risk_blocked,
+        extensible_context={},
+    )
+    existing_trade_plan = TradePlan(
+        signal_id=existing_signal.id,
+        plan_timestamp=setup.trade_plan_result.plan_timestamp,
+        known_at=setup.trade_plan_result.known_at,
+        entry_type=setup.trade_plan_result.entry_type,
+        entry_zone_low=setup.trade_plan_result.entry_zone_low,
+        entry_zone_high=setup.trade_plan_result.entry_zone_high,
+        confirmation_level=setup.trade_plan_result.confirmation_level,
+        invalidation_level=setup.trade_plan_result.invalidation_level,
+        tp1=setup.trade_plan_result.tp1,
+        tp2=setup.trade_plan_result.tp2,
+        trail_mode=setup.trade_plan_result.trail_mode,
+        plan_reason_codes=list(setup.trade_plan_result.plan_reason_codes),
+        extensible_context={},
+    )
+    fake_session.signals[existing_signal.id] = existing_signal
+    fake_session.trade_plans[existing_signal.id] = existing_trade_plan
+
+    summary = store.record_qualifying_setups([setup])
+
+    assert summary.recorded_signals == 0
+    assert summary.recorded_trade_plans == 0
+    assert summary.initialized_outcomes == 1
+    assert summary.skipped_existing == 1
+    assert existing_signal.id in fake_session.outcomes
 
 
 def test_doctrine_lifecycle_store_updates_outcome_labels_from_delayed_bars():

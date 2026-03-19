@@ -78,7 +78,7 @@ class RankingEngine:
             final_score -= self.config.partial_coverage_penalty
             reason_codes.append("RANK_PARTIAL_COVERAGE_PENALTY")
 
-        if rr1 >= Decimal("1.50"):
+        if rr1 >= self.config.strong_rr1_threshold:
             final_score += self.config.rr1_bonus_strong
             reason_codes.append("RANK_RR1_STRONG")
         elif rr1 >= self.config.min_rr_for_positive_rank:
@@ -87,7 +87,7 @@ class RankingEngine:
             final_score -= self.config.rr1_penalty_weak
             reason_codes.append("RANK_RR1_WEAK")
 
-        if rr2 >= Decimal("2.50"):
+        if rr2 >= self.config.strong_rr2_threshold:
             final_score += self.config.rr2_bonus_strong
             reason_codes.append("RANK_RR2_STRONG")
 

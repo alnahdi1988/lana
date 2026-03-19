@@ -18,6 +18,8 @@ from doctrine_engine.alerts.models import (
 @dataclass(frozen=True, slots=True)
 class AlertWorkflowConfig:
     cooldown_minutes: int = 60
+    sendable_grades: tuple[str, ...] = ("A+", "A")
+    suppress_event_risk_blocked: bool = True
 
 
 class AlertWorkflow:
@@ -216,9 +218,9 @@ class AlertWorkflow:
     def _sendability(self, signal: str, grade: str, event_risk_blocked: bool) -> str | None:
         if signal != "LONG":
             return "NOT_LONG"
-        if grade not in {"A+", "A"}:
+        if grade not in self.config.sendable_grades:
             return "GRADE_NOT_SENDABLE"
-        if event_risk_blocked:
+        if self.config.suppress_event_risk_blocked and event_risk_blocked:
             return "EVENT_RISK_BLOCKED"
         return None
 

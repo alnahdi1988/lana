@@ -308,6 +308,30 @@ def test_discount_response_takes_precedence_over_generic_bullish_reclaim() -> No
     assert "MTF_DISCOUNT_RESPONSE" in result.reason_codes
 
 
+def test_bullish_reclaim_maps_to_output_setup_state() -> None:
+    symbol_id = uuid.uuid4()
+    ts = datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc)
+    htf_bar = _bar(symbol_id, Timeframe.HOUR_4, ts, "10.5")
+    mtf_bar = _bar(symbol_id, Timeframe.HOUR_1, ts, "10.1")
+    ltf_bar = _bar(symbol_id, Timeframe.MIN_15, ts, "10.1")
+    signal_input = _signal_input(
+        htf_history=[_structure_result(htf_bar)],
+        htf_zone=_zone_result(htf_bar),
+        mtf_history=[_structure_result(mtf_bar)],
+        mtf_zone=_zone_result(mtf_bar, zone_location="MIDRANGE"),
+        mtf_pattern=_pattern_result(mtf_bar, reclaim="ACTIVE"),
+        ltf_history=[_structure_result(ltf_bar, events=[StructureEvent("BULLISH_CHOCH", ts, ts, Decimal("10.0"), Decimal("10.1"))])],
+        ltf_zone=_zone_result(ltf_bar),
+        ltf_pattern=_pattern_result(ltf_bar),
+    )
+
+    result = SignalEngine().evaluate(signal_input)
+
+    assert result.extensible_context["internal_mtf_state"] == "BULLISH_RECLAIM"
+    assert result.setup_state == "BULLISH_RECLAIM"
+    assert "MTF_BULLISH_RECLAIM" in result.reason_codes
+
+
 def test_equilibrium_hold_takes_precedence_over_generic_bullish_reclaim() -> None:
     symbol_id = uuid.uuid4()
     ts = datetime(2026, 2, 1, 12, 0, tzinfo=timezone.utc)

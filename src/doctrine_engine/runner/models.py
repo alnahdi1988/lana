@@ -1,21 +1,24 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
+from doctrine_engine.alerts.workflow import AlertWorkflowConfig
 from doctrine_engine.engines.models import (
     EngineBar,
     PatternEngineResult,
     StructureEngineResult,
     ZoneEngineResult,
 )
+from doctrine_engine.engines.signal_engine import SignalEngineConfig
+from doctrine_engine.ranking.models import RankingEngineConfig
 from doctrine_engine.regime.models import RegimeIndexInput
 
 RunMode = Literal["ONCE", "SCHEDULED"]
-RunStatus = Literal["SUCCESS", "PARTIAL_SUCCESS", "FAILED"]
+RunStatus = Literal["SUCCESS", "PARTIAL_SUCCESS", "FAILED", "DEGRADED"]
 StageName = Literal[
     "LOAD_UNIVERSE_CONTEXT",
     "LOAD_PHASE2_CONTEXT",
@@ -75,6 +78,9 @@ class RunnerConfig:
     enable_alert_workflow: bool = True
     enable_snapshot_requests: bool = False
     alert_cooldown_minutes: int = 60
+    signal_engine: SignalEngineConfig = field(default_factory=SignalEngineConfig)
+    ranking_engine: RankingEngineConfig = field(default_factory=RankingEngineConfig)
+    alert_workflow: AlertWorkflowConfig = field(default_factory=AlertWorkflowConfig)
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +148,7 @@ class SymbolRunSummary:
     ranking_tier: str | None
     alert_state: str | None
     error_message: str | None
+    reason_code: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

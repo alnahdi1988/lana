@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace as dataclass_replace
 import logging
 import time
 import uuid
@@ -8,7 +9,7 @@ from typing import Callable, Protocol
 
 from doctrine_engine.alerts.models import AlertWorkflowInput, SnapshotRequestConfig
 from doctrine_engine.alerts.telegram_renderer import TelegramRenderer
-from doctrine_engine.alerts.workflow import AlertWorkflow, AlertWorkflowConfig
+from doctrine_engine.alerts.workflow import AlertWorkflow
 from doctrine_engine.engines.models import (
     SignalEngineInput,
     SignalEventRiskInput,
@@ -17,7 +18,7 @@ from doctrine_engine.engines.models import (
     SignalSectorContextInput,
     TradePlanEngineInput,
 )
-from doctrine_engine.engines.signal_engine import SignalEngine, SignalEngineConfig
+from doctrine_engine.engines.signal_engine import SignalEngine
 from doctrine_engine.engines.trade_plan_engine import TradePlanEngine
 from doctrine_engine.event_risk.engine import EventRiskEngine
 from doctrine_engine.ranking.engine import RankingEngine
@@ -95,6 +96,7 @@ class RunnerPipeline:
         regime_engine: RegimeEvaluator | None = None,
         event_risk_engine: EventRiskEvaluator | None = None,
         ranking_engine: RankingEvaluator | None = None,
+        ranking_engine_factory: Callable[[RunnerConfig], RankingEvaluator] | None = None,
         alert_workflow_factory: Callable[[RunnerConfig], AlertWorkflowEvaluator] | None = None,
         telegram_renderer: TelegramRendererProtocol | None = None,
     ) -> None:
@@ -108,7 +110,10 @@ class RunnerPipeline:
         self.trade_plan_engine = trade_plan_engine or TradePlanEngine()
         self.regime_engine = regime_engine or RegimeEngine()
         self.event_risk_engine = event_risk_engine or EventRiskEngine()
-        self.ranking_engine = ranking_engine or RankingEngine()
+        if ranking_engine is not None:
+            self.ranking_engine_factory = lambda _config: ranking_engine
+        else:
+            self.ranking_engine_factory = ranking_engine_factory or self._default_ranking_engine_factory
         self.alert_workflow_factory = alert_workflow_factory or self._default_alert_workflow_factory
         self.telegram_renderer = telegram_renderer or TelegramRenderer()
 
@@ -149,6 +154,7 @@ class RunnerPipeline:
             )
 
         signal_engine = self.signal_engine_factory(runner_input.config)
+        ranking_engine = self.ranking_engine_factory(runner_input.config)
         alert_workflow = self.alert_workflow_factory(runner_input.config)
 
         symbol_summaries: list[SymbolRunSummary] = []
@@ -168,6 +174,7 @@ class RunnerPipeline:
                 symbol=symbol,
                 benchmark_context=benchmark_context,
                 signal_engine=signal_engine,
+                ranking_engine=ranking_engine,
                 alert_workflow=alert_workflow,
             )
             symbol_summaries.append(summary)
@@ -219,6 +226,7 @@ class RunnerPipeline:
         symbol: UniverseSymbolContext,
         benchmark_context,
         signal_engine: SignalEvaluator,
+        ranking_engine: RankingEvaluator,
         alert_workflow: AlertWorkflowEvaluator,
     ) -> tuple[SymbolRunSummary, dict[str, int], list[RenderedAlertSummary]]:
         counters = {
@@ -237,15 +245,11 @@ class RunnerPipeline:
         if phase2_context is None:
             counters["skipped"] = 1
             return (
-                SymbolRunSummary(
-                    symbol_id=symbol.symbol_id,
-                    ticker=symbol.ticker,
-                    status="SKIPPED",
+                self._skipped_summary(
+                    symbol=symbol,
                     stage_reached="LOAD_PHASE2_CONTEXT",
-                    signal=None,
-                    ranking_tier=None,
-                    alert_state=None,
                     error_message="Persisted Phase 2 context missing.",
+                    reason_code="PHASE2_CONTEXT_MISSING",
                 ),
                 counters,
                 rendered,
@@ -258,34 +262,28 @@ class RunnerPipeline:
                 context=f"load symbol market context for {symbol.ticker}",
             )
         except Exception as exc:
+            LOGGER.exception("Failed to load symbol market context for %s.", symbol.ticker)
             counters["failed"] = 1
             return (
-                SymbolRunSummary(
-                    symbol_id=symbol.symbol_id,
-                    ticker=symbol.ticker,
-                    status="FAILED",
+                self._failed_summary(
+                    symbol=symbol,
                     stage_reached="LOAD_PHASE2_CONTEXT",
-                    signal=None,
-                    ranking_tier=None,
-                    alert_state=None,
                     error_message=str(exc),
+                    reason_code="MARKET_DATA_LOAD_FAILED",
                 ),
                 counters,
                 rendered,
             )
 
-        if not self._has_required_symbol_bars(symbol_market_context, runner_input.config):
+        missing_timeframes = self._missing_required_timeframes(symbol_market_context, runner_input.config)
+        if missing_timeframes:
             counters["skipped"] = 1
             return (
-                SymbolRunSummary(
-                    symbol_id=symbol.symbol_id,
-                    ticker=symbol.ticker,
-                    status="SKIPPED",
+                self._skipped_summary(
+                    symbol=symbol,
                     stage_reached="LOAD_PHASE2_CONTEXT",
-                    signal=None,
-                    ranking_tier=None,
-                    alert_state=None,
-                    error_message="Required timeframe bars missing.",
+                    error_message="Required timeframe bars missing: " + ", ".join(missing_timeframes) + ".",
+                    reason_code="BAR_UNAVAILABLE",
                 ),
                 counters,
                 rendered,
@@ -315,6 +313,7 @@ class RunnerPipeline:
 
             LOGGER.info("%s", "BUILD_SIGNAL")
             signal_input = self._build_signal_input(
+                runner_config=runner_input.config,
                 symbol=symbol,
                 phase2_context=phase2_context,
                 symbol_market_context=symbol_market_context,
@@ -324,17 +323,14 @@ class RunnerPipeline:
             )
             signal_result = signal_engine.evaluate(signal_input)
         except Exception as exc:
+            LOGGER.exception("Failed to build signal path for %s.", symbol.ticker)
             counters["failed"] = 1
             return (
-                SymbolRunSummary(
-                    symbol_id=symbol.symbol_id,
-                    ticker=symbol.ticker,
-                    status="FAILED",
+                self._failed_summary(
+                    symbol=symbol,
                     stage_reached="BUILD_SIGNAL",
-                    signal=None,
-                    ranking_tier=None,
-                    alert_state=None,
                     error_message=str(exc),
+                    reason_code=self._signal_stage_reason_code(str(exc)),
                 ),
                 counters,
                 rendered,
@@ -343,15 +339,12 @@ class RunnerPipeline:
         if signal_result.signal != "LONG":
             counters["skipped"] = 1
             return (
-                SymbolRunSummary(
-                    symbol_id=symbol.symbol_id,
-                    ticker=symbol.ticker,
-                    status="SKIPPED",
+                self._skipped_summary(
+                    symbol=symbol,
                     stage_reached="BUILD_SIGNAL",
                     signal=signal_result.signal,
-                    ranking_tier=None,
-                    alert_state=None,
                     error_message=None,
+                    reason_code=self._signal_skip_reason_code(signal_result),
                 ),
                 counters,
                 rendered,
@@ -373,30 +366,25 @@ class RunnerPipeline:
             if self._is_non_fatal_trade_plan_error(exc):
                 counters["skipped"] = 1
                 return (
-                    SymbolRunSummary(
-                        symbol_id=symbol.symbol_id,
-                        ticker=symbol.ticker,
-                        status="SKIPPED",
+                    self._skipped_summary(
+                        symbol=symbol,
                         stage_reached="BUILD_TRADE_PLAN",
                         signal=signal_result.signal,
-                        ranking_tier=None,
-                        alert_state=None,
                         error_message=str(exc),
+                        reason_code="TRADE_PLAN_NON_FATAL",
                     ),
                     counters,
                     rendered,
                 )
+            LOGGER.exception("Failed to build trade plan for %s.", symbol.ticker)
             counters["failed"] = 1
             return (
-                SymbolRunSummary(
-                    symbol_id=symbol.symbol_id,
-                    ticker=symbol.ticker,
-                    status="FAILED",
+                self._failed_summary(
+                    symbol=symbol,
                     stage_reached="BUILD_TRADE_PLAN",
                     signal=signal_result.signal,
-                    ranking_tier=None,
-                    alert_state=None,
                     error_message=str(exc),
+                    reason_code="TRADE_PLAN_FAILED",
                 ),
                 counters,
                 rendered,
@@ -409,7 +397,7 @@ class RunnerPipeline:
         if runner_input.config.enable_ranking:
             try:
                 LOGGER.info("%s", "BUILD_RANKING")
-                ranking_result = self.ranking_engine.evaluate(
+                ranking_result = ranking_engine.evaluate(
                     RankingEngineInput(
                         signal_id=signal_id,
                         signal_result=signal_result,
@@ -421,6 +409,7 @@ class RunnerPipeline:
                 ranking_tier = ranking_result.ranking_tier
                 counters["ranked_symbols"] = 1
             except Exception as exc:
+                LOGGER.exception("Failed to rank %s.", symbol.ticker)
                 ranking_error = str(exc)
 
         alert_state = None
@@ -472,17 +461,17 @@ class RunnerPipeline:
                     counters["rendered_alerts"] = 1
                     stage_reached = "RENDER_ALERT_TEXT"
             except Exception as exc:
+                LOGGER.exception("Failed alert workflow/render for %s.", symbol.ticker)
                 counters["failed"] = 1
                 return (
-                    SymbolRunSummary(
-                        symbol_id=symbol.symbol_id,
-                        ticker=symbol.ticker,
-                        status="FAILED",
+                    self._failed_summary(
+                        symbol=symbol,
                         stage_reached=stage_reached if stage_reached != "BUILD_TRADE_PLAN" else "BUILD_ALERT_DECISION",
                         signal=signal_result.signal,
                         ranking_tier=ranking_tier,
                         alert_state=alert_state,
                         error_message=str(exc),
+                        reason_code="ALERT_DECISION_FAILED",
                     ),
                     counters,
                     rendered,
@@ -499,6 +488,7 @@ class RunnerPipeline:
                 ranking_tier=ranking_tier,
                 alert_state=alert_state,
                 error_message=error_message,
+                reason_code="RANKING_FAILED" if ranking_error is not None else None,
             ),
             counters,
             rendered,
@@ -507,6 +497,7 @@ class RunnerPipeline:
     def _build_signal_input(
         self,
         *,
+        runner_config: RunnerConfig,
         symbol: UniverseSymbolContext,
         phase2_context,
         symbol_market_context,
@@ -522,11 +513,11 @@ class RunnerPipeline:
             price_reference=symbol.price_reference,
             universe_reason_codes=list(symbol.universe_reason_codes),
             universe_known_at=symbol.universe_known_at,
-            htf=self._build_frame_input("4H", symbol_market_context.htf_bar, phase2_context.htf),
-            mtf=self._build_frame_input("1H", symbol_market_context.mtf_bar, phase2_context.mtf),
-            ltf=self._build_frame_input("15M", symbol_market_context.ltf_bar, phase2_context.ltf),
+            htf=self._build_frame_input(runner_config.timeframes.htf, symbol_market_context.htf_bar, phase2_context.htf),
+            mtf=self._build_frame_input(runner_config.timeframes.mtf, symbol_market_context.mtf_bar, phase2_context.mtf),
+            ltf=self._build_frame_input(runner_config.timeframes.ltf, symbol_market_context.ltf_bar, phase2_context.ltf),
             micro=(
-                self._build_frame_input("5M", symbol_market_context.micro_bar, phase2_context.micro)
+                self._build_frame_input(runner_config.timeframes.micro, symbol_market_context.micro_bar, phase2_context.micro)
                 if symbol_market_context.micro_bar is not None and phase2_context.micro is not None
                 else None
             ),
@@ -592,16 +583,17 @@ class RunnerPipeline:
         raise RuntimeError(f"{context} failed after {attempts} attempt(s): {last_error}") from last_error
 
     @staticmethod
-    def _has_required_symbol_bars(symbol_market_context, config: RunnerConfig) -> bool:
-        if (
-            symbol_market_context.htf_bar is None
-            or symbol_market_context.mtf_bar is None
-            or symbol_market_context.ltf_bar is None
-        ):
-            return False
-        if config.require_micro_confirmation and symbol_market_context.micro_bar is None:
-            return False
-        return True
+    def _missing_required_timeframes(symbol_market_context, config: RunnerConfig) -> list[str]:
+        missing: list[str] = []
+        if symbol_market_context.htf_bar is None:
+            missing.append(config.timeframes.htf)
+        if symbol_market_context.mtf_bar is None:
+            missing.append(config.timeframes.mtf)
+        if symbol_market_context.ltf_bar is None:
+            missing.append(config.timeframes.ltf)
+        if config.require_micro_confirmation and symbol_market_context.micro_bar is None and config.timeframes.micro is not None:
+            missing.append(config.timeframes.micro)
+        return missing
 
     @staticmethod
     def _filter_symbols(symbols: list[UniverseSymbolContext], config: RunnerConfig) -> list[UniverseSymbolContext]:
@@ -664,14 +656,94 @@ class RunnerPipeline:
     @staticmethod
     def _default_signal_engine_factory(config: RunnerConfig) -> SignalEvaluator:
         return SignalEngine(
-            SignalEngineConfig(
+            dataclass_replace(
+                config.signal_engine,
                 require_micro_confirmation=config.require_micro_confirmation,
-                micro_context_requested=(
-                    config.require_micro_confirmation or config.timeframes.micro is not None
-                ),
+                micro_context_requested=(config.require_micro_confirmation or config.timeframes.micro is not None),
             )
         )
 
     @staticmethod
+    def _default_ranking_engine_factory(config: RunnerConfig) -> RankingEvaluator:
+        return RankingEngine(config.ranking_engine)
+
+    @staticmethod
     def _default_alert_workflow_factory(config: RunnerConfig) -> AlertWorkflowEvaluator:
-        return AlertWorkflow(AlertWorkflowConfig(cooldown_minutes=config.alert_cooldown_minutes))
+        return AlertWorkflow(
+            dataclass_replace(
+                config.alert_workflow,
+                cooldown_minutes=config.alert_cooldown_minutes,
+            )
+        )
+
+    @staticmethod
+    def _skipped_summary(
+        *,
+        symbol: UniverseSymbolContext,
+        stage_reached: str,
+        error_message: str | None,
+        reason_code: str,
+        signal: str | None = None,
+        ranking_tier: str | None = None,
+        alert_state: str | None = None,
+    ) -> SymbolRunSummary:
+        return SymbolRunSummary(
+            symbol_id=symbol.symbol_id,
+            ticker=symbol.ticker,
+            status="SKIPPED",
+            stage_reached=stage_reached,
+            signal=signal,
+            ranking_tier=ranking_tier,
+            alert_state=alert_state,
+            error_message=error_message,
+            reason_code=reason_code,
+        )
+
+    @staticmethod
+    def _failed_summary(
+        *,
+        symbol: UniverseSymbolContext,
+        stage_reached: str,
+        error_message: str,
+        reason_code: str,
+        signal: str | None = None,
+        ranking_tier: str | None = None,
+        alert_state: str | None = None,
+    ) -> SymbolRunSummary:
+        return SymbolRunSummary(
+            symbol_id=symbol.symbol_id,
+            ticker=symbol.ticker,
+            status="FAILED",
+            stage_reached=stage_reached,
+            signal=signal,
+            ranking_tier=ranking_tier,
+            alert_state=alert_state,
+            error_message=error_message,
+            reason_code=reason_code,
+        )
+
+    @staticmethod
+    def _signal_skip_reason_code(signal_result) -> str:
+        if signal_result.event_risk_blocked:
+            return "EVENT_RISK_BLOCKED"
+        if "REGIME_BLOCKED" in signal_result.reason_codes:
+            return "REGIME_BLOCKED"
+        if "PRICE_OUT_OF_RANGE" in signal_result.reason_codes:
+            return "PRICE_OUT_OF_RANGE"
+        if "UNIVERSE_REJECTED" in signal_result.reason_codes:
+            return "UNIVERSE_REJECTED"
+        if "NO_CROSS_FRAME_CONFIRMATION" in signal_result.reason_codes:
+            return "NO_CROSS_FRAME_CONFIRMATION"
+        if "LTF_NO_TRIGGER" in signal_result.reason_codes:
+            return "LTF_TRIGGER_MISSING"
+        if signal_result.extensible_context.get("hard_gates", {}).get("confidence_threshold") is False:
+            return "CONFIDENCE_FLOOR_REJECTED"
+        return "SIGNAL_REJECTED"
+
+    @staticmethod
+    def _signal_stage_reason_code(error_message: str) -> str:
+        if "regime external inputs" in error_message:
+            return "REGIME_INPUT_LOAD_FAILED"
+        if "event-risk external inputs" in error_message:
+            return "EVENT_RISK_INPUT_LOAD_FAILED"
+        return "SIGNAL_BUILD_FAILED"

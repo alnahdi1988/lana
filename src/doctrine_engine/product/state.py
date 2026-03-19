@@ -80,7 +80,8 @@ class OperationalStateStore:
                     signal TEXT,
                     ranking_tier TEXT,
                     alert_state TEXT,
-                    error_message TEXT
+                    error_message TEXT,
+                    reason_code TEXT
                 );
 
                 CREATE TABLE IF NOT EXISTS alerts (
@@ -193,6 +194,9 @@ class OperationalStateStore:
                 col_name = col_def.split()[0]
                 if col_name not in existing_cols:
                     connection.execute(f"ALTER TABLE alerts ADD COLUMN {col_def}")
+            symbol_run_cols = {row[1] for row in connection.execute("PRAGMA table_info(symbol_runs)").fetchall()}
+            if "reason_code" not in symbol_run_cols:
+                connection.execute("ALTER TABLE symbol_runs ADD COLUMN reason_code TEXT")
 
     def load_prior_alert_state(self, symbol_id: uuid.UUID, setup_state: str, entry_type: str) -> PriorAlertState | None:
         with self._connect() as connection:
@@ -284,8 +288,9 @@ class OperationalStateStore:
                         signal,
                         ranking_tier,
                         alert_state,
-                        error_message
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        error_message,
+                        reason_code
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         str(runner_result.run_id),
@@ -297,6 +302,7 @@ class OperationalStateStore:
                         summary.ranking_tier,
                         summary.alert_state,
                         summary.error_message,
+                        summary.reason_code,
                     ),
                 )
                 if summary.status == "FAILED" and summary.error_message:

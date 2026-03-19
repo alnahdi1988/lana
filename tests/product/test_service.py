@@ -83,6 +83,11 @@ class _StubDoctrineLifecycleStore:
         return {}
 
 
+class _BrokenDoctrineLifecycleStore(_StubDoctrineLifecycleStore):
+    def record_qualifying_setups(self, setups):
+        raise RuntimeError("persistence unavailable")
+
+
 class _StubRunnerPipeline:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
@@ -336,6 +341,46 @@ def test_product_service_run_once_records_qualifying_setup_for_doctrine_even_whe
     assert doctrine_event["status"] == "OK"
     tracker_event = state_store.latest_operator_event("OUTCOME_TRACKER")
     assert tracker_event["status"] == "OK"
+
+
+def test_product_service_marks_run_degraded_when_doctrine_persistence_fails(tmp_path):
+    class _Settings:
+        database_url = "sqlite://"
+        polygon_api_key = None
+        polygon_base_url = "https://api.polygon.io"
+        polygon_timeout_seconds = 5
+        operator_state_db_path = str(tmp_path / "ops.db")
+        telegram_enabled = False
+        telegram_bot_token = None
+        telegram_chat_id = None
+        polygon_universe_refresh_limit = 10
+        universe_min_price = Decimal("5")
+        universe_max_price = Decimal("50")
+        universe_min_avg_volume_20d = Decimal("500000")
+        universe_min_avg_dollar_volume_20d = Decimal("5000000")
+        polygon_intraday_lookback_days = 30
+        polygon_daily_lookback_days = 90
+        phase2_history_window_bars = 20
+        polygon_news_lookback_hours = 72
+        polygon_news_limit = 25
+        halt_status_mode = "fail_open"
+        alert_cooldown_minutes = 60
+        log_level = "INFO"
+
+    state_store = OperationalStateStore(str(tmp_path / "ops.db"))
+    app = DoctrineProductApp(
+        settings=_Settings(),
+        state_store=state_store,
+        sync_service=_StubSyncService(),
+        telegram_transport=_StubTransport(),
+        runner_pipeline_factory=_StubRunnerPipeline,
+        doctrine_lifecycle_store=_BrokenDoctrineLifecycleStore(),
+    )
+
+    result = app.run_once()
+
+    assert result.runner_result.run_status == "DEGRADED"
+    assert state_store.latest_operator_event("DOCTRINE_PERSISTENCE")["status"] == "FAILED"
 
 
 def test_build_runner_config_requests_5m_micro() -> None:

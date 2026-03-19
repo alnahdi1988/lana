@@ -97,6 +97,7 @@ def test_missing_required_timeframe_bars_skips_symbol() -> None:
         regime_external_input_loader=RegimeInputLoader(recorder, make_regime_input(symbol, make_benchmark_context())),
         event_risk_external_input_loader=EventRiskInputLoader(recorder, make_event_risk_input(symbol)),
         prior_alert_state_loader=PriorAlertLoader(recorder),
+        signal_engine_factory=lambda config: FakeSignalEngine(recorder, make_signal_result(symbol)),
     )
     result = pipeline.run(
         RunnerInput(
@@ -108,6 +109,9 @@ def test_missing_required_timeframe_bars_skips_symbol() -> None:
     assert result.run_status == "SUCCESS"
     assert result.skipped_symbols == 1
     assert result.symbol_summaries[0].stage_reached == "LOAD_PHASE2_CONTEXT"
+    assert result.symbol_summaries[0].reason_code == "BAR_UNAVAILABLE"
+    assert "15M" in result.symbol_summaries[0].error_message
+    assert "BUILD_SIGNAL" not in recorder.calls
 
 
 def test_external_read_retry_is_config_driven() -> None:

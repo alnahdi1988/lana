@@ -210,6 +210,34 @@ def test_regime_incomplete_fail_closed_returns_none_and_ignore_grade() -> None:
     assert result.reason_codes[6] == "REGIME_BLOCKED"
 
 
+def test_regime_explicitly_disallowing_longs_returns_none() -> None:
+    symbol_id = uuid.uuid4()
+    ts = datetime(2026, 2, 3, 12, 0, tzinfo=timezone.utc)
+    htf_bar = _bar(symbol_id, Timeframe.HOUR_4, ts, "10.5")
+    mtf_bar = _bar(symbol_id, Timeframe.HOUR_1, ts, "10.3")
+    ltf_bar = _bar(symbol_id, Timeframe.MIN_15, ts, "10.4")
+    signal_input = _signal_input(
+        htf_history=[_structure_result(htf_bar)],
+        htf_zone=_zone_result(htf_bar),
+        mtf_history=[_structure_result(mtf_bar)],
+        mtf_zone=_zone_result(mtf_bar),
+        mtf_pattern=_strong_pattern(mtf_bar),
+        ltf_history=[_structure_result(ltf_bar)],
+        ltf_zone=_zone_result(ltf_bar),
+        ltf_pattern=_strong_pattern(ltf_bar),
+    )
+    signal_input = replace(
+        signal_input,
+        regime=SignalRegimeInput("BULLISH_TREND", "SECTOR_STRONG", Decimal("0.80"), Decimal("0.70"), False, True, [], ts),
+    )
+
+    result = SignalEngine().evaluate(signal_input)
+
+    assert result.signal == "NONE"
+    assert result.grade == "IGNORE"
+    assert result.reason_codes[6] == "REGIME_BLOCKED"
+
+
 def test_confidence_formula_is_exact_and_price_out_of_range_forces_none() -> None:
     symbol_id = uuid.uuid4()
     ts = datetime(2026, 2, 3, 12, 0, tzinfo=timezone.utc)
@@ -242,3 +270,33 @@ def test_confidence_formula_is_exact_and_price_out_of_range_forces_none() -> Non
     assert out_of_range_result.signal == "NONE"
     assert out_of_range_result.grade == "IGNORE"
     assert out_of_range_result.reason_codes[0] == "PRICE_OUT_OF_RANGE"
+
+
+def test_configurable_confidence_floor_rejects_otherwise_valid_long() -> None:
+    symbol_id = uuid.uuid4()
+    ts = datetime(2026, 2, 3, 12, 0, tzinfo=timezone.utc)
+    htf_bar = _bar(symbol_id, Timeframe.HOUR_4, ts, "10.5")
+    mtf_bar = _bar(symbol_id, Timeframe.HOUR_1, ts, "10.3")
+    ltf_bar = _bar(symbol_id, Timeframe.MIN_15, ts, "10.4")
+    signal_input = _signal_input(
+        htf_history=[_structure_result(htf_bar)],
+        htf_zone=_zone_result(htf_bar, zone_location="DISCOUNT"),
+        mtf_history=[_structure_result(mtf_bar)],
+        mtf_zone=_zone_result(mtf_bar, zone_location="DISCOUNT"),
+        mtf_pattern=_strong_pattern(mtf_bar),
+        ltf_history=[_structure_result(ltf_bar)],
+        ltf_zone=_zone_result(ltf_bar),
+        ltf_pattern=_strong_pattern(ltf_bar),
+    )
+    signal_input = replace(
+        signal_input,
+        regime=SignalRegimeInput("BULLISH_TREND", "SECTOR_STRONG", Decimal("0.80"), Decimal("0.70"), True, True, [], ts),
+        event_risk=SignalEventRiskInput("NO_EVENT_RISK", False, True, Decimal("0.02"), [], ts),
+        sector_context=SignalSectorContextInput("STRONG", None, [], ts),
+    )
+
+    result = SignalEngine(SignalEngineConfig(long_confidence_threshold=Decimal("0.82"))).evaluate(signal_input)
+
+    assert result.confidence == Decimal("0.8100")
+    assert result.signal == "NONE"
+    assert result.grade == "IGNORE"

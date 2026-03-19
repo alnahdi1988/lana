@@ -16,6 +16,7 @@ class Signal(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "signals"
     __table_args__ = (
         CheckConstraint("confidence >= 0 AND confidence <= 1", name="signals_confidence_between_zero_and_one"),
+        UniqueConstraint("symbol_id", "signal_timestamp", name="uq_signals_symbol_signal_timestamp"),
         Index("ix_signals_symbol_signal_timestamp", "symbol_id", "signal_timestamp"),
         Index("ix_signals_known_at", "known_at"),
         Index("ix_signals_signal", "signal"),

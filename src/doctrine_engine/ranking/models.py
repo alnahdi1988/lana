@@ -39,6 +39,8 @@ class RankingEngineConfig:
     high_threshold: Decimal = Decimal("0.75")
     medium_threshold: Decimal = Decimal("0.65")
     min_rr_for_positive_rank: Decimal = Decimal("1.20")
+    strong_rr1_threshold: Decimal = Decimal("1.50")
+    strong_rr2_threshold: Decimal = Decimal("2.50")
     min_risk_distance: Decimal = Decimal("0.05")
     grade_weight_a_plus: Decimal = Decimal("0.22")
     grade_weight_a: Decimal = Decimal("0.16")
