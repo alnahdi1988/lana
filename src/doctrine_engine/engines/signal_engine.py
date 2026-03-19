@@ -83,20 +83,22 @@ class SignalEngine:
             "BEARISH": "HTF_BEARISH",
         }[bias_htf]
 
-        internal_mtf_state = self._determine_internal_mtf_state(signal_input)
+        candidate_mtf_states = self._candidate_internal_mtf_states(signal_input)
+        internal_mtf_state = candidate_mtf_states[0]
         mtf_code = self._mtf_reason_code(internal_mtf_state)
 
-        ltf_trigger_state = self._determine_trigger_state(
+        candidate_ltf_trigger_states = self._candidate_trigger_states(
             signal_input.ltf,
             self.config.ltf_structure_trigger_freshness_bars,
         )
+        ltf_trigger_state = candidate_ltf_trigger_states[0]
         ltf_code = self._ltf_reason_code(ltf_trigger_state)
 
         micro_requested = self.config.require_micro_confirmation or self.config.micro_context_requested
         micro_present = signal_input.micro is not None
         micro_used = self.config.require_micro_confirmation and micro_present
         micro_trigger_state = (
-            self._determine_trigger_state(signal_input.micro, self.config.micro_trigger_freshness_bars)
+            self._candidate_trigger_states(signal_input.micro, self.config.micro_trigger_freshness_bars)[0]
             if micro_present
             else None
         )
@@ -220,7 +222,9 @@ class SignalEngine:
             event_risk_blocked=event_risk_blocked,
             extensible_context={
                 "internal_mtf_state": internal_mtf_state,
+                "candidate_mtf_states": list(candidate_mtf_states),
                 "ltf_trigger_state": ltf_trigger_state,
+                "candidate_ltf_trigger_states": list(candidate_ltf_trigger_states),
                 "market_regime": signal_input.regime.market_regime,
                 "sector_regime": signal_input.regime.sector_regime,
                 "event_risk_class": signal_input.event_risk.event_risk_class,
@@ -291,7 +295,7 @@ class SignalEngine:
 
         return "NEUTRAL"
 
-    def _determine_internal_mtf_state(self, signal_input: SignalEngineInput) -> str:
+    def _candidate_internal_mtf_states(self, signal_input: SignalEngineInput) -> list[str]:
         recent_results = signal_input.mtf.structure_history[-self.config.mtf_invalidation_lookback_bars :]
         mtf_zone = signal_input.mtf.zone
         mtf_pattern = signal_input.mtf.pattern
@@ -301,20 +305,24 @@ class SignalEngine:
             or mtf_pattern.recontainment.status == "INVALIDATED"
             or self._recent_has_bearish_structure_event(recent_results)
         ):
-            return "INVALIDATED"
+            return ["INVALIDATED"]
         if mtf_zone.zone_location == "PREMIUM":
-            return "EXTENDED_PREMIUM"
+            return ["EXTENDED_PREMIUM"]
+
+        candidates: list[str] = []
         if mtf_pattern.recontainment.status in {"CANDIDATE", "ACTIVE"}:
-            return "RECONTAINMENT_CANDIDATE"
+            candidates.append("RECONTAINMENT_CANDIDATE")
         if self._is_discount_response(mtf_zone=mtf_zone, mtf_pattern=mtf_pattern):
-            return "DISCOUNT_RESPONSE"
+            candidates.append("DISCOUNT_RESPONSE")
         if self._is_equilibrium_hold(mtf_zone=mtf_zone, mtf_pattern=mtf_pattern):
-            return "EQUILIBRIUM_HOLD"
+            candidates.append("EQUILIBRIUM_HOLD")
         if mtf_pattern.bullish_reclaim.status in {"NEW_EVENT", "ACTIVE"}:
-            return "BULLISH_RECLAIM"
+            candidates.append("BULLISH_RECLAIM")
+        if candidates:
+            return candidates
         if signal_input.mtf.structure.trend_state == "MIXED":
-            return "CHOP"
-        return "NO_STRUCTURE"
+            return ["CHOP"]
+        return ["NO_STRUCTURE"]
 
     @staticmethod
     def _is_discount_response(*, mtf_zone, mtf_pattern) -> bool:
@@ -331,24 +339,25 @@ class SignalEngine:
             or mtf_pattern.recontainment.status in {"CANDIDATE", "ACTIVE"}
         )
 
-    def _determine_trigger_state(
+    def _candidate_trigger_states(
         self,
         frame_input,
         structure_freshness_bars: int,
-    ) -> LTFTriggerState:
+    ) -> list[LTFTriggerState]:
+        candidates: list[LTFTriggerState] = []
         if frame_input.pattern.bullish_trap_reverse.status in {"NEW_EVENT", "ACTIVE"}:
-            return "TRAP_REVERSE_BULLISH"
+            candidates.append("TRAP_REVERSE_BULLISH")
         if frame_input.pattern.bullish_fake_breakdown.status in {"NEW_EVENT", "ACTIVE"}:
-            return "FAKE_BREAKDOWN_REVERSAL"
+            candidates.append("FAKE_BREAKDOWN_REVERSAL")
         if frame_input.pattern.bullish_reclaim.status in {"NEW_EVENT", "ACTIVE"}:
-            return "LTF_BULLISH_RECLAIM"
+            candidates.append("LTF_BULLISH_RECLAIM")
 
         recent_results = frame_input.structure_history[-structure_freshness_bars:]
         if self._recent_has_structure_event(recent_results, "BULLISH_CHOCH"):
-            return "LTF_BULLISH_CHOCH"
+            candidates.append("LTF_BULLISH_CHOCH")
         if self._recent_has_structure_event(recent_results, "BULLISH_BOS"):
-            return "LTF_BULLISH_BOS"
-        return "LTF_NO_TRIGGER"
+            candidates.append("LTF_BULLISH_BOS")
+        return candidates or ["LTF_NO_TRIGGER"]
 
     def _recent_has_bearish_structure_event(self, results) -> bool:
         return any(

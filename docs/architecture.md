@@ -124,7 +124,7 @@ Tracks signal outcomes and creates labels.
 
 \### trainer\_service
 
-Retrains ranking models from signal history.
+Planned service for retraining ranking models from signal history. It is not implemented in the current live product.
 
 
 
@@ -154,7 +154,7 @@ Retrains ranking models from signal history.
 
 9\. Outcome tracker labels results
 
-10\. Trainer updates ranking model
+10\. Trainer updates ranking model (planned, not live)
 
 
 
@@ -216,7 +216,7 @@ Minimum APIs:
 
 \- `/research/performance`
 
-\- admin endpoints for rebuild/retrain
+\- admin endpoints for rebuild/retrain (planned, not live)
 
 
 
@@ -250,7 +250,7 @@ v1 deployment goal:
 
 \- stable scheduled scans every 15 minutes
 
-\- nightly retraining / reporting
+\- nightly retraining / reporting (planned, not live)
 
 
 
