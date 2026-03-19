@@ -263,38 +263,43 @@ class SignalEngine:
 
     def _determine_internal_mtf_state(self, signal_input: SignalEngineInput) -> str:
         recent_results = signal_input.mtf.structure_history[-self.config.mtf_invalidation_lookback_bars :]
+        mtf_zone = signal_input.mtf.zone
+        mtf_pattern = signal_input.mtf.pattern
+
         if (
-            signal_input.mtf.zone.range_status == "NO_VALID_RANGE"
-            or signal_input.mtf.pattern.recontainment.status == "INVALIDATED"
+            mtf_zone.range_status == "NO_VALID_RANGE"
+            or mtf_pattern.recontainment.status == "INVALIDATED"
             or self._recent_has_bearish_structure_event(recent_results)
         ):
             return "INVALIDATED"
-        if signal_input.mtf.zone.zone_location == "PREMIUM":
+        if mtf_zone.zone_location == "PREMIUM":
             return "EXTENDED_PREMIUM"
-        if signal_input.mtf.pattern.recontainment.status in {"CANDIDATE", "ACTIVE"}:
+        if mtf_pattern.recontainment.status in {"CANDIDATE", "ACTIVE"}:
             return "RECONTAINMENT_CANDIDATE"
-        if signal_input.mtf.pattern.bullish_reclaim.status in {"NEW_EVENT", "ACTIVE"}:
-            return "BULLISH_RECLAIM"
-        if (
-            signal_input.mtf.zone.zone_location == "DISCOUNT"
-            and (
-                signal_input.mtf.pattern.bullish_fake_breakdown.status in {"NEW_EVENT", "ACTIVE"}
-                or signal_input.mtf.pattern.bullish_reclaim.status in {"CANDIDATE", "NEW_EVENT", "ACTIVE"}
-            )
-        ):
+        if self._is_discount_response(mtf_zone=mtf_zone, mtf_pattern=mtf_pattern):
             return "DISCOUNT_RESPONSE"
-        if (
-            signal_input.mtf.zone.zone_location == "EQUILIBRIUM"
-            and (
-                signal_input.mtf.pattern.compression.status == "COMPRESSED"
-                or signal_input.mtf.pattern.bullish_reclaim.status in {"NEW_EVENT", "ACTIVE"}
-                or signal_input.mtf.pattern.recontainment.status in {"CANDIDATE", "ACTIVE"}
-            )
-        ):
+        if self._is_equilibrium_hold(mtf_zone=mtf_zone, mtf_pattern=mtf_pattern):
             return "EQUILIBRIUM_HOLD"
+        if mtf_pattern.bullish_reclaim.status in {"NEW_EVENT", "ACTIVE"}:
+            return "BULLISH_RECLAIM"
         if signal_input.mtf.structure.trend_state == "MIXED":
             return "CHOP"
         return "NO_STRUCTURE"
+
+    @staticmethod
+    def _is_discount_response(*, mtf_zone, mtf_pattern) -> bool:
+        return mtf_zone.zone_location == "DISCOUNT" and (
+            mtf_pattern.bullish_fake_breakdown.status in {"NEW_EVENT", "ACTIVE"}
+            or mtf_pattern.bullish_reclaim.status in {"CANDIDATE", "NEW_EVENT", "ACTIVE"}
+        )
+
+    @staticmethod
+    def _is_equilibrium_hold(*, mtf_zone, mtf_pattern) -> bool:
+        return mtf_zone.zone_location == "EQUILIBRIUM" and (
+            mtf_pattern.compression.status == "COMPRESSED"
+            or mtf_pattern.bullish_reclaim.status in {"NEW_EVENT", "ACTIVE"}
+            or mtf_pattern.recontainment.status in {"CANDIDATE", "ACTIVE"}
+        )
 
     def _determine_trigger_state(
         self,
