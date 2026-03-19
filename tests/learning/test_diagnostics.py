@@ -14,10 +14,11 @@ class _Exporter:
     def __init__(self, rows):
         self.rows = rows
 
-    def export_rows(self, limit=None):
+    def export_rows(self, limit=None, newest_first=False):
+        rows = list(reversed(self.rows)) if newest_first else list(self.rows)
         if limit is None:
-            return list(self.rows)
-        return list(self.rows[:limit])
+            return rows
+        return rows[:limit]
 
 
 def _row(

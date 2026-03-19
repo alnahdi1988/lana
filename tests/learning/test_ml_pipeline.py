@@ -6,13 +6,15 @@ from pathlib import Path
 import json
 import uuid
 
+import joblib
 import pytest
 
+from doctrine_engine.learning.artifact import load_compatible_artifact
 from doctrine_engine.learning.dataset import LifecycleLearningDataset
 from doctrine_engine.learning.features import build_learning_example
+from doctrine_engine.learning.predict import BaselineScorer
 from doctrine_engine.learning.promote import ModelPromoter
 from doctrine_engine.learning.reporting import BaselineRetrainer, ValidationReporter, recommend_from_run
-from doctrine_engine.learning.registry import ModelRunRegistry
 from doctrine_engine.learning.train import BaselineTrainer
 from doctrine_engine.learning.validate import BaselineValidator
 
@@ -21,10 +23,11 @@ class _Exporter:
     def __init__(self, rows):
         self.rows = rows
 
-    def export_rows(self, limit=None):
+    def export_rows(self, limit=None, newest_first=False):
+        rows = list(reversed(self.rows)) if newest_first else list(self.rows)
         if limit is None:
-            return list(self.rows)
-        return list(self.rows[:limit])
+            return rows
+        return rows[:limit]
 
 
 @dataclass
@@ -157,6 +160,7 @@ def test_build_learning_example_excludes_free_form_reason_codes() -> None:
     assert "reason_codes" not in example.features
     assert example.features["setup_state"] == "DISCOUNT_RESPONSE"
     assert example.features["telegram_sendable"] is True
+    assert example.features["event_risk_blocked"] is False
 
 
 def test_baseline_trainer_fails_with_insufficient_labels(tmp_path: Path) -> None:
@@ -302,3 +306,107 @@ def test_promoting_new_version_demotes_previous_promoted_version() -> None:
     assert registry.get("v2").promoted is True
     assert registry.get("v1").promoted is False
     assert registry.get("v1").status == "VALIDATED"
+
+
+def test_validator_rejects_overlapping_or_reversed_windows(tmp_path: Path) -> None:
+    rows = [_row(index, success_label=bool(index % 2)) for index in range(18)]
+    dataset = LifecycleLearningDataset(exporter=_Exporter(rows))
+    registry = _Registry()
+    validator = BaselineValidator(dataset=dataset, registry=registry)
+
+    with pytest.raises(ValueError, match="validate_start > train_end"):
+        validator.validate(
+            train_start=datetime(2026, 3, 10, tzinfo=timezone.utc),
+            train_end=datetime(2026, 3, 10, 20, tzinfo=timezone.utc),
+            validate_start=datetime(2026, 3, 10, 20, tzinfo=timezone.utc),
+            validate_end=datetime(2026, 3, 11, 6, tzinfo=timezone.utc),
+            artifact_dir=tmp_path,
+        )
+
+    with pytest.raises(ValueError, match="validate_end > validate_start"):
+        validator.validate(
+            train_start=datetime(2026, 3, 10, tzinfo=timezone.utc),
+            train_end=datetime(2026, 3, 10, 20, tzinfo=timezone.utc),
+            validate_start=datetime(2026, 3, 11, 6, tzinfo=timezone.utc),
+            validate_end=datetime(2026, 3, 11, 5, tzinfo=timezone.utc),
+            artifact_dir=tmp_path,
+        )
+
+
+def test_load_compatible_artifact_rejects_version_mismatch(tmp_path: Path) -> None:
+    artifact_path = tmp_path / "bad-model.joblib"
+    joblib.dump(
+        {
+            "pipeline": object(),
+            "feature_columns": [],
+            "model_name": "baseline_empirical_ranker",
+            "model_version": "bad",
+            "feature_set_version": "lifecycle_v1",
+            "sklearn_version": "0.0-test",
+            "joblib_version": joblib.__version__,
+        },
+        artifact_path,
+    )
+
+    with pytest.raises(ValueError, match="Retrain the model in the current environment"):
+        load_compatible_artifact(artifact_path)
+
+
+def test_score_latest_falls_back_to_newest_compatible_model(tmp_path: Path) -> None:
+    rows = [_row(index, success_label=bool(index % 2)) for index in range(18)]
+    dataset = LifecycleLearningDataset(exporter=_Exporter(rows))
+    registry = _Registry()
+    trainer = BaselineTrainer(dataset=dataset, registry=registry)
+    compatible = trainer.train(
+        train_start=datetime(2026, 3, 10, tzinfo=timezone.utc),
+        train_end=datetime(2026, 3, 11, 6, tzinfo=timezone.utc),
+        artifact_dir=tmp_path,
+    )
+    registry.upsert(
+        model_version="legacy-promoted",
+        feature_set_version="lifecycle_v1",
+        status="PROMOTED",
+        training_window_start=datetime(2026, 3, 10, tzinfo=timezone.utc),
+        training_window_end=datetime(2026, 3, 11, 6, tzinfo=timezone.utc),
+        validation_window_start=datetime(2026, 3, 11, 7, tzinfo=timezone.utc),
+        validation_window_end=datetime(2026, 3, 11, 12, tzinfo=timezone.utc),
+        artifact_uri=str((tmp_path / "legacy.joblib").resolve()),
+        metrics={"validation_row_count": 10},
+        params={},
+        promoted=True,
+    )
+    joblib.dump(
+        {
+            "pipeline": object(),
+            "feature_columns": [],
+            "model_name": "baseline_empirical_ranker",
+            "model_version": "legacy-promoted",
+            "feature_set_version": "lifecycle_v1",
+            "sklearn_version": "0.0-test",
+            "joblib_version": joblib.__version__,
+        },
+        tmp_path / "legacy.joblib",
+    )
+
+    scorer = BaselineScorer(dataset=dataset, registry=registry)
+    scored = scorer.score_latest(limit=3)
+
+    assert all(row["model_version"] == compatible.model_version for row in scored)
+
+
+def test_score_latest_uses_most_recent_rows(tmp_path: Path) -> None:
+    rows = [_row(index, success_label=bool(index % 2)) for index in range(18)]
+    dataset = LifecycleLearningDataset(exporter=_Exporter(rows))
+    registry = _Registry()
+    trainer = BaselineTrainer(dataset=dataset, registry=registry)
+    record = trainer.train(
+        train_start=datetime(2026, 3, 10, tzinfo=timezone.utc),
+        train_end=datetime(2026, 3, 11, 6, tzinfo=timezone.utc),
+        artifact_dir=tmp_path,
+    )
+
+    scorer = BaselineScorer(dataset=dataset, registry=registry)
+    scored = scorer.score_latest(limit=3, model_version=record.model_version)
+
+    expected_ids = {rows[-1]["signal_id"], rows[-2]["signal_id"], rows[-3]["signal_id"]}
+    assert {row["signal_id"] for row in scored} == expected_ids

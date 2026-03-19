@@ -20,7 +20,9 @@ This runbook describes the current operating sequence for the first live Doctrin
 
 - Steps 1 through 9 are implemented for the baseline manual-governed ML path.
 - Rollback remains manual by design in v1.
+- If `score-latest` encounters an incompatible legacy artifact, it now rejects that artifact explicitly and uses the newest compatible validated/trained model instead.
 
 ## Go-live rule
 
 Do not claim ML overrides doctrine. The live contract remains: doctrine produces valid setups, ML ranks and governs valid setups, and promotion/rollback stay operator-controlled in v1.
+Do not claim full ML closure until the currently promoted live model passes the recommendation gate in the current runtime.

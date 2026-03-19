@@ -203,6 +203,8 @@ class ModelRunRegistry:
                 if keeper.status != "PROMOTED":
                     keeper.status = "PROMOTED"
                     changed = True
+            if _normalize_governance_metrics(keeper):
+                changed = True
         if changed:
             session.commit()
 
@@ -219,3 +221,21 @@ def _merge_notes(left: str | None, right: str | None) -> str | None:
         if part not in deduped:
             deduped.append(part)
     return "\n".join(deduped)
+
+
+def _normalize_governance_metrics(row: ModelRun) -> bool:
+    metrics = dict(row.metrics or {})
+    train_row_count = metrics.get("train_row_count")
+    positive_rate = metrics.get("positive_rate")
+    if train_row_count is None or positive_rate is None:
+        return False
+    if metrics.get("train_positive_count") is not None and metrics.get("train_negative_count") is not None:
+        return False
+    total = int(train_row_count)
+    positive = int(round(float(positive_rate) * total))
+    positive = max(0, min(total, positive))
+    negative = total - positive
+    metrics["train_positive_count"] = positive
+    metrics["train_negative_count"] = negative
+    row.metrics = metrics
+    return True

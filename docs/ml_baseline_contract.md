@@ -27,8 +27,10 @@ Define the minimum acceptable first ML implementation for Doctrine Engine.
 ## Current repo status
 
 - Dataset export foundation exists.
+- `lifecycle_v1` includes the governance feature `event_risk_blocked`.
 - `model_runs` persistence exists with one canonical row per `(model_name, model_version)`.
 - Baseline trainer, validator, retrainer, scorer, reporting, recommendation, comparison, and manual promotion commands now exist in `src/doctrine_engine/learning/` and `src/doctrine_engine/product/cli.py`.
+- Scoring rejects incompatible artifacts explicitly and requires retrain in the current runtime when sklearn/joblib versions do not match.
 
 ## Acceptance for completion
 
@@ -39,3 +41,5 @@ Define the minimum acceptable first ML implementation for Doctrine Engine.
 - A manual promotion command can promote only a validated model version.
 - The training record is attributable to a concrete feature set version and time window.
 - The output can be consumed by ranking without changing the deterministic doctrine signal path.
+
+Completion of the baseline contract does not by itself imply that the currently promoted live model satisfies governance quality gates.

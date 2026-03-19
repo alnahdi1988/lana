@@ -5,9 +5,9 @@ from pathlib import Path
 from typing import Any
 import json
 
-import joblib
 from sklearn.metrics import brier_score_loss, precision_score, recall_score, roc_auc_score
 
+from doctrine_engine.learning.artifact import load_compatible_artifact
 from doctrine_engine.learning.dataset import LifecycleLearningDataset
 from doctrine_engine.learning.features import to_feature_matrix
 from doctrine_engine.learning.registry import ModelRunRegistry
@@ -30,13 +30,19 @@ class BaselineValidator:
         artifact_dir: str | Path,
         reuse_existing_training: bool = True,
     ) -> ModelArtifactRecord:
+        _validate_windows(
+            train_start=train_start,
+            train_end=train_end,
+            validate_start=validate_start,
+            validate_end=validate_end,
+        )
         trained = self._resolve_trained_model(
             train_start=train_start,
             train_end=train_end,
             artifact_dir=artifact_dir,
             reuse_existing_training=reuse_existing_training,
         )
-        artifact = joblib.load(trained.artifact_uri)
+        artifact = load_compatible_artifact(trained.artifact_uri)
         validation_rows = [
             item
             for item in self.dataset.examples(
@@ -170,3 +176,18 @@ def _score_band_expectancy(rows, probabilities) -> list[dict[str, Any]]:
 
 
 __all__ = ["BaselineValidator"]
+
+
+def _validate_windows(
+    *,
+    train_start: datetime,
+    train_end: datetime,
+    validate_start: datetime,
+    validate_end: datetime,
+) -> None:
+    if train_end <= train_start:
+        raise ValueError("Training window must satisfy train_end > train_start.")
+    if validate_end <= validate_start:
+        raise ValueError("Validation window must satisfy validate_end > validate_start.")
+    if validate_start <= train_end:
+        raise ValueError("Walk-forward validation requires validate_start > train_end with no overlap.")

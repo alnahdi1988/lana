@@ -228,7 +228,11 @@ def _run_ml_command(app: DoctrineProductApp, args) -> None:
         return
     if args.ml_command == "score-latest":
         scorer = BaselineScorer(dataset=dataset, registry=registry)
-        _emit_json(scorer.score_latest(limit=args.limit, model_version=args.model_version))
+        try:
+            payload = scorer.score_latest(limit=args.limit, model_version=args.model_version)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+        _emit_json(payload)
         return
     if args.ml_command == "promote":
         promoter = ModelPromoter(registry=registry)

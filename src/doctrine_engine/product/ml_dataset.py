@@ -32,14 +32,19 @@ class LifecycleDatasetExporter:
     def __init__(self, *, session_factory: sessionmaker[Session]) -> None:
         self.session_factory = session_factory
 
-    def export_rows(self, *, limit: int | None = None) -> list[dict]:
+    def export_rows(self, *, limit: int | None = None, newest_first: bool = False) -> list[dict]:
         with self.session_factory() as session:
+            order_by = (
+                (Signal.known_at.desc(), Signal.signal_timestamp.desc(), Signal.created_at.desc())
+                if newest_first
+                else (Signal.signal_timestamp.asc(), Signal.created_at.asc())
+            )
             statement = (
                 select(Signal, TradePlan, Outcome, Symbol.ticker)
                 .join(TradePlan, TradePlan.signal_id == Signal.id)
                 .join(Outcome, Outcome.signal_id == Signal.id)
                 .join(Symbol, Symbol.id == Signal.symbol_id)
-                .order_by(Signal.signal_timestamp.asc(), Signal.created_at.asc())
+                .order_by(*order_by)
             )
             if limit is not None:
                 statement = statement.limit(limit)
@@ -93,8 +98,9 @@ class LifecycleDatasetExporter:
         return run
 
     def _summary(self, rows: list[dict]) -> DatasetExportSummary:
-        latest_signal_timestamp = rows[-1]["signal_timestamp"] if rows else None
-        latest_known_at = rows[-1]["known_at"] if rows else None
+        latest_row = max(rows, key=lambda row: (row["known_at"], row["signal_timestamp"])) if rows else None
+        latest_signal_timestamp = latest_row["signal_timestamp"] if latest_row else None
+        latest_known_at = latest_row["known_at"] if latest_row else None
         pending_rows = sum(1 for row in rows if row["evaluation_status"] == "PENDING")
         finalized_rows = sum(1 for row in rows if row["evaluation_status"] == "FINALIZED")
         return DatasetExportSummary(
@@ -120,6 +126,7 @@ class LifecycleDatasetExporter:
             "bias_htf": signal.bias_htf.value,
             "setup_state": signal.setup_state,
             "reason_codes": list(signal.reason_codes),
+            "event_risk_blocked": signal.event_risk_blocked,
             "internal_mtf_state": signal.extensible_context.get("internal_mtf_state"),
             "candidate_mtf_states": list(signal.extensible_context.get("candidate_mtf_states") or []),
             "ltf_trigger_state": signal.extensible_context.get("ltf_trigger_state"),

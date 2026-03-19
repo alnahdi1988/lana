@@ -20,8 +20,9 @@ class LifecycleLearningDataset:
         finalized_only: bool = False,
         known_at_start: datetime | None = None,
         known_at_end: datetime | None = None,
+        newest_first: bool = False,
     ) -> list[LearningExample]:
-        rows = self.exporter.export_rows(limit=limit)
+        rows = self.exporter.export_rows(limit=limit, newest_first=newest_first)
         examples = [build_learning_example(row) for row in rows]
         return [
             example

@@ -13,6 +13,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
+from doctrine_engine.learning.artifact import current_runtime_versions
 from doctrine_engine.learning.dataset import LifecycleLearningDataset
 from doctrine_engine.learning.features import feature_column_names, to_feature_matrix
 from doctrine_engine.learning.registry import ModelRunRegistry
@@ -72,6 +73,7 @@ class BaselineTrainer:
                 "random_state": 0,
                 "max_iter": 1000,
                 "min_finalized_rows": MIN_FINALIZED_ROWS,
+                **current_runtime_versions(),
             },
             metrics={
                 "train_row_count": len(labeled),
@@ -87,6 +89,7 @@ class BaselineTrainer:
                 "model_name": BASELINE_MODEL_NAME,
                 "model_version": model_version,
                 "feature_set_version": FEATURE_SET_VERSION,
+                **current_runtime_versions(),
             },
             artifact_path,
         )

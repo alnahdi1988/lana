@@ -19,6 +19,7 @@ Define the non-negotiable controls for promoting ML in Doctrine Engine.
 - `doctrine ml validate-baseline` now records a chronological validation metrics pack.
 - `doctrine ml promote` now enforces manual promotion of validated model versions only.
 - `doctrine ml retrain-baseline`, `validation-report`, `compare-models`, and `recommend-promotion` now complete the CLI-first governance path.
+- Current live evidence still matters: a promoted model can remain `RECOMMEND_REJECT` if its validation window is weak or its artifact runtime is stale.
 - Rollback remains manual by design in v1: promote a prior validated/promoted version explicitly.
 
 ## Required completion
@@ -27,3 +28,4 @@ Define the non-negotiable controls for promoting ML in Doctrine Engine.
 - Promotion rules are encoded, not manual folklore.
 - Ranking can identify which model version produced a score.
 - Dashboard/runtime surfaces expose the promoted model version and latest validation truth without implying ML overrides doctrine.
+- Full governance closure requires a promoted live model that passes the recommendation gate in the current runtime.

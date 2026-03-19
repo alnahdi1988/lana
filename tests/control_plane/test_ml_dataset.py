@@ -57,6 +57,7 @@ def _row():
         bias_htf=SimpleNamespace(value="BULLISH"),
         setup_state="BULLISH_RECLAIM",
         reason_codes=["PRICE_RANGE_VALID", "UNIVERSE_ELIGIBLE"],
+        event_risk_blocked=True,
         extensible_context={
             "market_regime": "CHOP",
             "sector_regime": "SECTOR_NEUTRAL",
@@ -114,6 +115,7 @@ def test_export_rows_preserves_suppressed_setup_and_lifecycle_fields() -> None:
     assert row["dataset_version"] == DATASET_VERSION
     assert row["ticker"] == "TEST"
     assert row["setup_state"] == "BULLISH_RECLAIM"
+    assert row["event_risk_blocked"] is True
     assert row["alert_state"] == "SUPPRESSED"
     assert row["suppression_reason"] == "GRADE_NOT_SENDABLE"
     assert row["evaluation_status"] == "PENDING"
