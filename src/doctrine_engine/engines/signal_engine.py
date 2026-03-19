@@ -343,7 +343,7 @@ class SignalEngine:
 
         mtf_scores = {
             "RECONTAINMENT_CANDIDATE": Decimal("0.20"),
-            "BULLISH_RECLAIM": Decimal("0.18"),
+            "BULLISH_RECLAIM": Decimal("0.20"),
             "DISCOUNT_RESPONSE": Decimal("0.16"),
             "EQUILIBRIUM_HOLD": Decimal("0.14"),
         }

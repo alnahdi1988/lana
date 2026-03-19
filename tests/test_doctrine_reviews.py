@@ -5,8 +5,18 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
-from doctrine_engine.control_plane import doctrine_reviews
-from doctrine_engine.control_plane.task_queue import TaskQueue
+import pytest
+
+try:
+    from doctrine_engine.control_plane import doctrine_reviews
+    from doctrine_engine.control_plane.task_queue import TaskQueue
+except ImportError:
+    pytest.skip(
+        "doctrine_engine.control_plane is a local-only module excluded from git. "
+        "These tests only run on workstations that have the control_plane installed.",
+        allow_module_level=True,
+    )
+
 from doctrine_engine.product.state import OperationalStateStore
 
 
