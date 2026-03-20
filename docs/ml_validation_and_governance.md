@@ -18,7 +18,7 @@ Define the non-negotiable controls for promoting ML in Doctrine Engine.
 - `model_runs` stores version, windows, metrics, params, and promotion flags.
 - `doctrine ml validate-baseline` now records a chronological validation metrics pack.
 - `doctrine ml promote` now enforces manual promotion of validated model versions only.
-- `doctrine ml retrain-baseline`, `validation-report`, `compare-models`, and `recommend-promotion` now complete the CLI-first governance path.
+- `doctrine ml retrain-baseline`, `validation-report`, `compare-models`, and `recommend-promotion` now provide the CLI-first governance plumbing.
 - Current live evidence still matters: a promoted model can remain `RECOMMEND_REJECT` if its validation window is weak or its artifact runtime is stale.
 - Rollback remains manual by design in v1: promote a prior validated/promoted version explicitly.
 
