@@ -19,20 +19,20 @@ class DoctrineSignalSettings(BaseModel):
     mtf_invalidation_lookback_bars: int = 1
     ltf_structure_trigger_freshness_bars: int = 1
     micro_trigger_freshness_bars: int = 1
-    grade_a_plus_threshold: Decimal = Decimal("0.90")
-    grade_a_threshold: Decimal = Decimal("0.80")
+    grade_a_plus_threshold: Decimal = Decimal("0.85")
+    grade_a_threshold: Decimal = Decimal("0.79")
     grade_b_threshold: Decimal = Decimal("0.70")
     htf_timeframe: str = "4H"
     mtf_timeframe: str = "1H"
     ltf_timeframe: str = "15M"
     micro_timeframe: str = "5M"
     htf_bullish_weight: Decimal = Decimal("0.20")
-    mtf_weight_recontainment: Decimal = Decimal("0.20")
-    mtf_weight_reclaim: Decimal = Decimal("0.20")
-    mtf_weight_discount: Decimal = Decimal("0.16")
-    mtf_weight_equilibrium: Decimal = Decimal("0.14")
-    ltf_weight_trap_reverse: Decimal = Decimal("0.15")
-    ltf_weight_fake_breakdown: Decimal = Decimal("0.14")
+    mtf_weight_recontainment: Decimal = Decimal("0.21")
+    mtf_weight_reclaim: Decimal = Decimal("0.19")
+    mtf_weight_discount: Decimal = Decimal("0.20")
+    mtf_weight_equilibrium: Decimal = Decimal("0.18")
+    ltf_weight_trap_reverse: Decimal = Decimal("0.16")
+    ltf_weight_fake_breakdown: Decimal = Decimal("0.15")
     ltf_weight_reclaim: Decimal = Decimal("0.12")
     ltf_weight_choch: Decimal = Decimal("0.10")
     ltf_weight_bos: Decimal = Decimal("0.08")
@@ -43,12 +43,19 @@ class DoctrineSignalSettings(BaseModel):
     displacement_bonus: Decimal = Decimal("0.02")
     regime_market_permission_strong_threshold: Decimal = Decimal("0.70")
     regime_sector_permission_strong_threshold: Decimal = Decimal("0.60")
-    regime_permission_strong_bonus: Decimal = Decimal("0.05")
-    regime_permission_supportive_bonus: Decimal = Decimal("0.02")
-    sector_strength_bonus_strong: Decimal = Decimal("0.03")
-    sector_strength_bonus_neutral: Decimal = Decimal("0.01")
+    regime_permission_strong_bonus: Decimal = Decimal("0.06")
+    regime_permission_supportive_bonus: Decimal = Decimal("0.04")
+    sector_strength_bonus_strong: Decimal = Decimal("0.04")
+    sector_strength_bonus_neutral: Decimal = Decimal("0.02")
     sector_strength_bonus_weak: Decimal = Decimal("0.00")
     sector_strength_bonus_unknown: Decimal = Decimal("0.00")
+    mtf_confluence_bonus: Decimal = Decimal("0.02")
+    ltf_confluence_bonus: Decimal = Decimal("0.01")
+    micro_trigger_bonus_trap_reverse: Decimal = Decimal("0.03")
+    micro_trigger_bonus_fake_breakdown: Decimal = Decimal("0.03")
+    micro_trigger_bonus_reclaim: Decimal = Decimal("0.02")
+    micro_trigger_bonus_choch: Decimal = Decimal("0.03")
+    micro_trigger_bonus_bos: Decimal = Decimal("0.02")
     max_event_risk_soft_penalty: Decimal = Decimal("0.10")
 
 
@@ -220,6 +227,13 @@ class Settings(BaseSettings):
             sector_strength_bonus_neutral=signal.sector_strength_bonus_neutral,
             sector_strength_bonus_weak=signal.sector_strength_bonus_weak,
             sector_strength_bonus_unknown=signal.sector_strength_bonus_unknown,
+            mtf_confluence_bonus=signal.mtf_confluence_bonus,
+            ltf_confluence_bonus=signal.ltf_confluence_bonus,
+            micro_trigger_bonus_trap_reverse=signal.micro_trigger_bonus_trap_reverse,
+            micro_trigger_bonus_fake_breakdown=signal.micro_trigger_bonus_fake_breakdown,
+            micro_trigger_bonus_reclaim=signal.micro_trigger_bonus_reclaim,
+            micro_trigger_bonus_choch=signal.micro_trigger_bonus_choch,
+            micro_trigger_bonus_bos=signal.micro_trigger_bonus_bos,
             max_event_risk_soft_penalty=signal.max_event_risk_soft_penalty,
         )
 

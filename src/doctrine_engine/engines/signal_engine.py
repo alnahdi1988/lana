@@ -30,8 +30,8 @@ class SignalEngineConfig:
     mtf_invalidation_lookback_bars: int = 1
     ltf_structure_trigger_freshness_bars: int = 1
     micro_trigger_freshness_bars: int = 1
-    grade_a_plus_threshold: Decimal = Decimal("0.90")
-    grade_a_threshold: Decimal = Decimal("0.80")
+    grade_a_plus_threshold: Decimal = Decimal("0.85")
+    grade_a_threshold: Decimal = Decimal("0.79")
     grade_b_threshold: Decimal = Decimal("0.70")
     universe_min_price: Decimal = Decimal("5")
     universe_max_price: Decimal = Decimal("50")
@@ -40,12 +40,12 @@ class SignalEngineConfig:
     ltf_timeframe: str = "15M"
     micro_timeframe: str = "5M"
     htf_bullish_weight: Decimal = Decimal("0.20")
-    mtf_weight_recontainment: Decimal = Decimal("0.20")
-    mtf_weight_reclaim: Decimal = Decimal("0.20")
-    mtf_weight_discount: Decimal = Decimal("0.16")
-    mtf_weight_equilibrium: Decimal = Decimal("0.14")
-    ltf_weight_trap_reverse: Decimal = Decimal("0.15")
-    ltf_weight_fake_breakdown: Decimal = Decimal("0.14")
+    mtf_weight_recontainment: Decimal = Decimal("0.21")
+    mtf_weight_reclaim: Decimal = Decimal("0.19")
+    mtf_weight_discount: Decimal = Decimal("0.20")
+    mtf_weight_equilibrium: Decimal = Decimal("0.18")
+    ltf_weight_trap_reverse: Decimal = Decimal("0.16")
+    ltf_weight_fake_breakdown: Decimal = Decimal("0.15")
     ltf_weight_reclaim: Decimal = Decimal("0.12")
     ltf_weight_choch: Decimal = Decimal("0.10")
     ltf_weight_bos: Decimal = Decimal("0.08")
@@ -56,12 +56,19 @@ class SignalEngineConfig:
     displacement_bonus: Decimal = Decimal("0.02")
     regime_market_permission_strong_threshold: Decimal = Decimal("0.70")
     regime_sector_permission_strong_threshold: Decimal = Decimal("0.60")
-    regime_permission_strong_bonus: Decimal = Decimal("0.05")
-    regime_permission_supportive_bonus: Decimal = Decimal("0.02")
-    sector_strength_bonus_strong: Decimal = Decimal("0.03")
-    sector_strength_bonus_neutral: Decimal = Decimal("0.01")
+    regime_permission_strong_bonus: Decimal = Decimal("0.06")
+    regime_permission_supportive_bonus: Decimal = Decimal("0.04")
+    sector_strength_bonus_strong: Decimal = Decimal("0.04")
+    sector_strength_bonus_neutral: Decimal = Decimal("0.02")
     sector_strength_bonus_weak: Decimal = Decimal("0.00")
     sector_strength_bonus_unknown: Decimal = Decimal("0.00")
+    mtf_confluence_bonus: Decimal = Decimal("0.02")
+    ltf_confluence_bonus: Decimal = Decimal("0.01")
+    micro_trigger_bonus_trap_reverse: Decimal = Decimal("0.03")
+    micro_trigger_bonus_fake_breakdown: Decimal = Decimal("0.03")
+    micro_trigger_bonus_reclaim: Decimal = Decimal("0.02")
+    micro_trigger_bonus_choch: Decimal = Decimal("0.03")
+    micro_trigger_bonus_bos: Decimal = Decimal("0.02")
     max_event_risk_soft_penalty: Decimal = Decimal("0.10")
 
 
@@ -148,8 +155,11 @@ class SignalEngine:
             signal_input=signal_input,
             bias_htf=bias_htf,
             internal_mtf_state=internal_mtf_state,
+            candidate_mtf_states=candidate_mtf_states,
             ltf_trigger_state=ltf_trigger_state,
+            candidate_ltf_trigger_states=candidate_ltf_trigger_states,
             cross_frame_aligned=cross_frame_aligned,
+            micro_trigger_state=micro_trigger_state,
         )
         confidence = self._sum_confidence_components(confidence_components)
 
@@ -184,7 +194,7 @@ class SignalEngine:
             if micro_used
             else signal_input.ltf.latest_bar.bar_timestamp
         )
-        known_at = max(self._consumed_known_ats(signal_input))
+        known_at = max(self._consumed_known_ats(signal_input, micro_used=micro_used))
 
         caution_codes: list[str] = []
         if signal_input.sector_context.sector_strength == "WEAK":
@@ -238,7 +248,7 @@ class SignalEngine:
                     key: format(value, "f")
                     for key, value in confidence_components.items()
                 },
-                "consumed_known_at": [known_at.isoformat() for known_at in self._consumed_known_ats(signal_input)],
+                "consumed_known_at": [known_at.isoformat() for known_at in self._consumed_known_ats(signal_input, micro_used=micro_used)],
                 "regime_snapshot": {
                     "market_regime": signal_input.regime.market_regime,
                     "sector_regime": signal_input.regime.sector_regime,
@@ -383,19 +393,25 @@ class SignalEngine:
         signal_input: SignalEngineInput,
         bias_htf: SignalBias,
         internal_mtf_state: str,
+        candidate_mtf_states: list[str],
         ltf_trigger_state: LTFTriggerState,
+        candidate_ltf_trigger_states: list[LTFTriggerState],
         cross_frame_aligned: bool,
+        micro_trigger_state: LTFTriggerState | None,
     ) -> dict[str, Decimal]:
         components: dict[str, Decimal] = {
             "htf_bias": Decimal("0"),
             "mtf_state": Decimal("0"),
             "ltf_trigger": Decimal("0"),
             "cross_frame_alignment": Decimal("0"),
+            "mtf_confluence": Decimal("0"),
+            "ltf_confluence": Decimal("0"),
             "zone_location": Decimal("0"),
             "compression": Decimal("0"),
             "displacement": Decimal("0"),
             "regime_permission": Decimal("0"),
             "sector_strength": Decimal("0"),
+            "micro_trigger": Decimal("0"),
             "event_risk_penalty": Decimal("0"),
         }
         if bias_htf == "BULLISH":
@@ -420,6 +436,10 @@ class SignalEngine:
 
         if cross_frame_aligned:
             components["cross_frame_alignment"] = self.config.cross_frame_alignment_bonus
+        if len(candidate_mtf_states) > 1:
+            components["mtf_confluence"] = self.config.mtf_confluence_bonus
+        if len(candidate_ltf_trigger_states) > 1:
+            components["ltf_confluence"] = self.config.ltf_confluence_bonus
 
         if signal_input.mtf.zone.zone_location == "DISCOUNT":
             components["zone_location"] = self.config.discount_zone_bonus
@@ -452,6 +472,15 @@ class SignalEngine:
             "UNKNOWN": self.config.sector_strength_bonus_unknown,
         }
         components["sector_strength"] = sector_scores[signal_input.sector_context.sector_strength]
+        micro_scores = {
+            "TRAP_REVERSE_BULLISH": self.config.micro_trigger_bonus_trap_reverse,
+            "FAKE_BREAKDOWN_REVERSAL": self.config.micro_trigger_bonus_fake_breakdown,
+            "LTF_BULLISH_RECLAIM": self.config.micro_trigger_bonus_reclaim,
+            "LTF_BULLISH_CHOCH": self.config.micro_trigger_bonus_choch,
+            "LTF_BULLISH_BOS": self.config.micro_trigger_bonus_bos,
+        }
+        if signal_input.micro is not None and micro_trigger_state is not None:
+            components["micro_trigger"] = micro_scores.get(micro_trigger_state, Decimal("0"))
         components["event_risk_penalty"] = -min(
             self.config.max_event_risk_soft_penalty,
             signal_input.event_risk.soft_penalty,
@@ -511,7 +540,7 @@ class SignalEngine:
             return "B"
         return "IGNORE"
 
-    def _consumed_known_ats(self, signal_input: SignalEngineInput) -> list[datetime]:
+    def _consumed_known_ats(self, signal_input: SignalEngineInput, *, micro_used: bool) -> list[datetime]:
         known_ats = [
             signal_input.universe_known_at,
             signal_input.htf.latest_bar.known_at,
@@ -521,7 +550,7 @@ class SignalEngine:
             signal_input.event_risk.known_at,
             signal_input.sector_context.known_at,
         ]
-        if self.config.require_micro_confirmation and signal_input.micro is not None:
+        if micro_used and signal_input.micro is not None:
             known_ats.append(signal_input.micro.latest_bar.known_at)
         return known_ats
 

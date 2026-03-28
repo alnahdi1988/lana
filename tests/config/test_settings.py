@@ -142,9 +142,10 @@ def test_settings_env_file_is_repo_absolute():
 
 def test_settings_built_signal_engine_uses_overridden_confidence_floor():
     signal_input = _signal_input()
-    settings = Settings(doctrine={"signal": {"long_confidence_threshold": "0.82"}})
+    settings = Settings(doctrine={"signal": {"long_confidence_threshold": "0.89"}})
 
     result = SignalEngine(settings.build_signal_engine_config()).evaluate(signal_input)
 
-    assert settings.build_signal_engine_config().long_confidence_threshold == Decimal("0.82")
+    assert settings.build_signal_engine_config().long_confidence_threshold == Decimal("0.89")
+    assert settings.build_signal_engine_config().grade_a_plus_threshold == Decimal("0.85")
     assert result.signal == "NONE"

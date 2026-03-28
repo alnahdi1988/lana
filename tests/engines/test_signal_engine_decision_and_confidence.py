@@ -179,7 +179,7 @@ def test_regime_incomplete_fail_open_can_still_evaluate() -> None:
     result = SignalEngine().evaluate(signal_input)
 
     assert result.signal == "LONG"
-    assert result.grade == "B"
+    assert result.grade == "A"
 
 
 def test_regime_incomplete_fail_closed_returns_none_and_ignore_grade() -> None:
@@ -264,12 +264,42 @@ def test_confidence_formula_is_exact_and_price_out_of_range_forces_none() -> Non
     long_result = SignalEngine().evaluate(signal_input)
     out_of_range_result = SignalEngine().evaluate(replace(signal_input, price_reference=Decimal("55.00")))
 
-    assert long_result.confidence == Decimal("0.8100")
+    assert long_result.confidence == Decimal("0.8800")
     assert long_result.signal == "LONG"
-    assert long_result.grade == "A"
+    assert long_result.grade == "A+"
     assert out_of_range_result.signal == "NONE"
     assert out_of_range_result.grade == "IGNORE"
     assert out_of_range_result.reason_codes[0] == "PRICE_OUT_OF_RANGE"
+
+
+def test_top_quality_long_can_reach_a_plus_grade() -> None:
+    symbol_id = uuid.uuid4()
+    ts = datetime(2026, 2, 3, 12, 0, tzinfo=timezone.utc)
+    htf_bar = _bar(symbol_id, Timeframe.HOUR_4, ts, "10.5")
+    mtf_bar = _bar(symbol_id, Timeframe.HOUR_1, ts, "10.3")
+    ltf_bar = _bar(symbol_id, Timeframe.MIN_15, ts, "10.4")
+    signal_input = _signal_input(
+        htf_history=[_structure_result(htf_bar)],
+        htf_zone=_zone_result(htf_bar, zone_location="DISCOUNT"),
+        mtf_history=[_structure_result(mtf_bar)],
+        mtf_zone=_zone_result(mtf_bar, zone_location="DISCOUNT"),
+        mtf_pattern=_strong_pattern(mtf_bar),
+        ltf_history=[_structure_result(ltf_bar)],
+        ltf_zone=_zone_result(ltf_bar),
+        ltf_pattern=_strong_pattern(ltf_bar),
+    )
+    signal_input = replace(
+        signal_input,
+        regime=SignalRegimeInput("BULLISH_TREND", "SECTOR_STRONG", Decimal("0.80"), Decimal("0.70"), True, True, [], ts),
+        event_risk=SignalEventRiskInput("NO_EVENT_RISK", False, True, Decimal("0.00"), [], ts),
+        sector_context=SignalSectorContextInput("STRONG", None, [], ts),
+    )
+
+    result = SignalEngine().evaluate(signal_input)
+
+    assert result.confidence == Decimal("0.9000")
+    assert result.signal == "LONG"
+    assert result.grade == "A+"
 
 
 def test_configurable_confidence_floor_rejects_otherwise_valid_long() -> None:
@@ -295,8 +325,49 @@ def test_configurable_confidence_floor_rejects_otherwise_valid_long() -> None:
         sector_context=SignalSectorContextInput("STRONG", None, [], ts),
     )
 
-    result = SignalEngine(SignalEngineConfig(long_confidence_threshold=Decimal("0.82"))).evaluate(signal_input)
+    result = SignalEngine(SignalEngineConfig(long_confidence_threshold=Decimal("0.89"))).evaluate(signal_input)
 
-    assert result.confidence == Decimal("0.8100")
+    assert result.confidence == Decimal("0.8800")
     assert result.signal == "NONE"
     assert result.grade == "IGNORE"
+
+
+def test_micro_trigger_bonus_lifts_available_micro_context_without_changing_timestamps() -> None:
+    symbol_id = uuid.uuid4()
+    ts = datetime(2026, 2, 3, 12, 0, tzinfo=timezone.utc)
+    htf_bar = _bar(symbol_id, Timeframe.HOUR_4, ts, "10.5")
+    mtf_bar = _bar(symbol_id, Timeframe.HOUR_1, ts, "10.3")
+    ltf_bar = _bar(symbol_id, Timeframe.MIN_15, ts, "10.4")
+    micro_bar = _bar(symbol_id, Timeframe.MIN_5, ts + timedelta(minutes=5), "10.5")
+    signal_input = _signal_input(
+        htf_history=[_structure_result(htf_bar)],
+        htf_zone=_zone_result(htf_bar, zone_location="DISCOUNT"),
+        mtf_history=[_structure_result(mtf_bar)],
+        mtf_zone=_zone_result(mtf_bar, zone_location="DISCOUNT"),
+        mtf_pattern=_strong_pattern(mtf_bar),
+        ltf_history=[_structure_result(ltf_bar)],
+        ltf_zone=_zone_result(ltf_bar),
+        ltf_pattern=_strong_pattern(ltf_bar),
+    )
+    micro_pattern = _strong_pattern(micro_bar)
+    signal_input = replace(
+        signal_input,
+        micro=SignalFrameInput(
+            "5M",
+            micro_bar,
+            _structure_result(micro_bar),
+            [_structure_result(micro_bar)],
+            _zone_result(micro_bar),
+            micro_pattern,
+        ),
+        event_risk=SignalEventRiskInput("NO_EVENT_RISK", False, True, Decimal("0.02"), [], ts),
+        sector_context=SignalSectorContextInput("STRONG", None, [], ts),
+    )
+
+    result = SignalEngine(SignalEngineConfig(micro_context_requested=True)).evaluate(signal_input)
+
+    assert result.signal_timestamp == ltf_bar.bar_timestamp
+    assert result.known_at == ltf_bar.known_at
+    assert result.extensible_context["micro_state"] == "AVAILABLE_NOT_USED"
+    assert result.confidence == Decimal("0.9100")
+    assert result.grade == "A+"
