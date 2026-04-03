@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -27,6 +27,9 @@ class SyncResult:
     snapshot_id: uuid.UUID
     synced_tickers: list[str]
     errors: list[str]
+    critical_errors: list[str] = field(default_factory=list)
+    non_critical_errors: list[str] = field(default_factory=list)
+    excluded_tickers: list[str] = field(default_factory=list)
 
 
 class PolygonSyncService:
@@ -70,13 +73,24 @@ class PolygonSyncService:
         self.pattern_engine = pattern_engine or PatternEngine()
 
     def prepare_run(self, runner_config: RunnerConfig) -> SyncResult:
-        errors: list[str] = []
+        refresh_non_critical_errors: list[str]
+        refresh_critical_errors: list[str]
+        refresh_excluded_tickers: list[str]
         with self.session_factory() as session:
-            snapshot = self._refresh_universe(session=session, runner_config=runner_config, errors=errors)
+            snapshot, refresh_non_critical_errors, refresh_critical_errors, refresh_excluded_tickers = self._refresh_universe(
+                session=session,
+                runner_config=runner_config,
+            )
             snapshot_id = snapshot.id
             session.commit()
 
-        tickers_to_sync = self._tickers_for_run(snapshot_id=snapshot_id, runner_config=runner_config)
+        tickers_to_sync, tradable_tickers, required_context_tickers = self._ticker_sets_for_run(
+            snapshot_id=snapshot_id,
+            runner_config=runner_config,
+        )
+        non_critical_errors = list(refresh_non_critical_errors)
+        critical_errors = list(refresh_critical_errors)
+        excluded_tickers = set(refresh_excluded_tickers)
         for ticker in tickers_to_sync:
             try:
                 with self.session_factory() as session:
@@ -84,11 +98,22 @@ class PolygonSyncService:
                     self._sync_symbol_bars(session=session, symbol=symbol)
                     session.commit()
             except Exception as exc:
-                errors.append(f"{ticker}: {exc}")
+                message = f"{ticker}: {exc}"
+                if ticker in required_context_tickers:
+                    critical_errors.append(message)
+                elif ticker in tradable_tickers:
+                    non_critical_errors.append(message)
+                    excluded_tickers.add(ticker)
+                else:
+                    critical_errors.append(message)
+        errors = [*non_critical_errors, *critical_errors]
         return SyncResult(
             snapshot_id=snapshot_id,
             synced_tickers=tickers_to_sync,
             errors=errors,
+            critical_errors=critical_errors,
+            non_critical_errors=non_critical_errors,
+            excluded_tickers=sorted(excluded_tickers),
         )
 
     def _refresh_universe(
@@ -96,8 +121,10 @@ class PolygonSyncService:
         *,
         session: Session,
         runner_config: RunnerConfig,
-        errors: list[str],
-    ) -> UniverseSnapshot:
+    ) -> tuple[UniverseSnapshot, list[str], list[str], list[str]]:
+        non_critical_errors: list[str] = []
+        critical_errors: list[str] = []
+        excluded_tickers: set[str] = set()
         session_date, grouped_rows = self._latest_grouped_session()
         snapshot = UniverseSnapshot(
             snapshot_timestamp=datetime.now(timezone.utc),
@@ -118,11 +145,23 @@ class PolygonSyncService:
         if runner_config.universe.include_tickers:
             candidate_tickers = list(runner_config.universe.include_tickers)
         else:
+            # Step 1: Filter by price band BEFORE sorting
+            min_price = self.min_price
+            max_price = self.max_price
+
+            price_filtered = [
+                row for row in grouped_rows
+                if row.get("c") and min_price <= Decimal(str(row["c"])) <= max_price
+            ]
+
+            # Step 2: Sort by dollar volume
             sorted_rows = sorted(
-                grouped_rows,
+                price_filtered,
                 key=lambda row: Decimal(str((row.get("c") or 0))) * Decimal(str((row.get("v") or 0))),
                 reverse=True,
             )
+
+            # Step 3: Select top N (up to universe_refresh_limit)
             candidate_tickers = [row["T"] for row in sorted_rows[: self.universe_refresh_limit]]
 
         for ticker in candidate_tickers:
@@ -143,18 +182,24 @@ class PolygonSyncService:
                 membership = self._build_membership(snapshot_id=snapshot.id, symbol=symbol, grouped_row=grouped_row, daily_rows=daily_rows)
                 session.add(membership)
             except Exception as exc:
-                errors.append(f"{ticker}: {exc}")
+                non_critical_errors.append(f"{ticker}: {exc}")
+                excluded_tickers.add(ticker)
 
         supplemental_tickers = (set(ALERT_BENCHMARKS) | set(SECTOR_ETF_MAP.values())) - set(candidate_tickers)
         for ticker in sorted(supplemental_tickers):
             try:
                 self._ensure_symbol(session, ticker)
             except Exception as exc:
-                errors.append(f"{ticker}: {exc}")
+                critical_errors.append(f"{ticker}: {exc}")
 
-        return snapshot
+        return snapshot, non_critical_errors, critical_errors, sorted(excluded_tickers)
 
-    def _tickers_for_run(self, *, snapshot_id: uuid.UUID, runner_config: RunnerConfig) -> list[str]:
+    def _ticker_sets_for_run(
+        self,
+        *,
+        snapshot_id: uuid.UUID,
+        runner_config: RunnerConfig,
+    ) -> tuple[list[str], set[str], set[str]]:
         with self.session_factory() as session:
             memberships = session.scalars(
                 select(UniverseMembership)
@@ -164,28 +209,29 @@ class PolygonSyncService:
                 )
                 .order_by(desc(UniverseMembership.avg_dollar_volume_20d), UniverseMembership.symbol_ticker_cache)
             ).all()
-            tickers = [
+            tradable_tickers = [
                 (membership.symbol_ticker_cache or session.get(Symbol, membership.symbol_id).ticker)
                 for membership in memberships
             ]
             if runner_config.universe.include_tickers:
-                tickers = [ticker for ticker in tickers if ticker in runner_config.universe.include_tickers]
-            tickers = [ticker for ticker in tickers if ticker not in runner_config.universe.exclude_tickers]
+                tradable_tickers = [ticker for ticker in tradable_tickers if ticker in runner_config.universe.include_tickers]
+            tradable_tickers = [ticker for ticker in tradable_tickers if ticker not in runner_config.universe.exclude_tickers]
             if runner_config.universe.max_symbols_per_run is not None:
-                tickers = tickers[: runner_config.universe.max_symbols_per_run]
+                tradable_tickers = tradable_tickers[: runner_config.universe.max_symbols_per_run]
 
             sector_etfs: set[str] = set()
-            for ticker in tickers:
+            for ticker in tradable_tickers:
                 symbol = session.scalar(select(Symbol).where(Symbol.ticker == ticker))
                 if symbol is None:
                     continue
                 sector_etf = symbol.extra.get("sector_etf_ticker")
                 if sector_etf:
                     sector_etfs.add(str(sector_etf))
-            required = set(tickers)
-            required.update(ALERT_BENCHMARKS)
-            required.update(sector_etfs)
-            return sorted(required)
+            required_context_tickers = set(ALERT_BENCHMARKS)
+            required_context_tickers.update(sector_etfs)
+            tickers_to_sync = set(tradable_tickers)
+            tickers_to_sync.update(required_context_tickers)
+            return sorted(tickers_to_sync), set(tradable_tickers), required_context_tickers
 
     def _ensure_symbol(self, session: Session, ticker: str) -> Symbol:
         symbol = session.scalar(select(Symbol).where(Symbol.ticker == ticker))
@@ -220,7 +266,12 @@ class PolygonSyncService:
                 session.execute(self._bar_upsert_statement(symbol.id, timeframe, row))
 
         for timeframe in (Timeframe.MIN_5, Timeframe.MIN_15, Timeframe.HOUR_1, Timeframe.HOUR_4):
-            bars = _load_timeframe_bars(session, symbol.id, timeframe)
+            bars = _load_timeframe_bars(
+                session,
+                symbol.id,
+                timeframe,
+                history_bar_limit=self._feature_history_bar_limit(),
+            )
             if not bars:
                 continue
             structure_history = self.structure_engine.evaluate_history(bars)
@@ -234,6 +285,11 @@ class PolygonSyncService:
                 upsert_feature_result(session, structure_result)
                 upsert_feature_result(session, zone_result)
                 upsert_feature_result(session, pattern_result)
+
+    def _feature_history_bar_limit(self) -> int:
+        # Recompute only on recent bars. The engines need local context, not the
+        # entire stored bar history on every cycle.
+        return max(self.history_window_bars * 20, 500)
 
     def _upsert_symbol(
         self,
@@ -436,12 +492,22 @@ class PolygonSyncService:
         return "Unknown"
 
 
-def _load_timeframe_bars(session: Session, symbol_id: uuid.UUID, timeframe: Timeframe) -> list[EngineBar]:
-    rows = session.scalars(
+def _load_timeframe_bars(
+    session: Session,
+    symbol_id: uuid.UUID,
+    timeframe: Timeframe,
+    *,
+    history_bar_limit: int | None = None,
+) -> list[EngineBar]:
+    statement = (
         select(Bar)
         .where(Bar.symbol_id == symbol_id, Bar.timeframe == timeframe)
-        .order_by(Bar.bar_timestamp)
-    ).all()
+        .order_by(desc(Bar.bar_timestamp))
+    )
+    if history_bar_limit is not None:
+        statement = statement.limit(history_bar_limit)
+    rows = list(session.scalars(statement).all())
+    rows.reverse()
     return [
         EngineBar(
             symbol_id=row.symbol_id,
