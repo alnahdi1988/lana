@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly Hermes drift-check and health monitoring
+Requires=hermes-agent.service
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

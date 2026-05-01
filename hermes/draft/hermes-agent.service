@@ -1,0 +1,26 @@
+[Unit]
+Description=Hermes Agent — OpenClaw Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=saleh
+WorkingDirectory=/home/saleh
+Environment="PATH=/home/saleh/.hermes/hermes-agent/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+Environment="HOME=/home/saleh"
+ExecStart=/home/saleh/.hermes/hermes-agent/venv/bin/python3 /home/saleh/.local/bin/hermes --resume latest
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/home/saleh/.hermes/logs/hermes-agent.log
+StandardError=append:/home/saleh/.hermes/logs/hermes-agent.log
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/saleh/.hermes/logs
+
+[Install]
+WantedBy=multi-user.target

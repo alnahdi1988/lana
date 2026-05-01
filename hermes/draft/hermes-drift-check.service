@@ -1,0 +1,21 @@
+[Unit]
+Description=Doctrine drift-check and health report
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=saleh
+WorkingDirectory=/home/saleh
+Environment="HOME=/home/saleh"
+ExecStart=/bin/bash /home/saleh/.hermes/doctrine/repo/drift-check.sh
+StandardOutput=append:/home/saleh/.hermes/doctrine/drift.log
+StandardError=append:/home/saleh/.hermes/doctrine/drift.log
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target
