@@ -1,5 +1,42 @@
 # Doctrine Closure Audit Final
 
+## Remediation Acceptance Addendum
+
+- Acceptance status: `ACCEPT WITH REMAINING P2 ITEMS`
+- Decision date: `2026-05-02`
+- Remaining P0/P1 blockers: none
+
+### Accepted operational areas
+
+- Runtime and panel recovery
+  - OS-level PID liveness is verified.
+  - Stale PID/status files are corrected.
+  - Duplicate web workers are reconciled/prevented.
+  - Mission Control separates current runtime state from latest completed run.
+  - Panel routes are serving correctly.
+- DB/session import hardening
+  - Partial mocked settings no longer break imports.
+  - Real DB engine creation is not hidden or swallowed.
+  - Real DB failures still fail through the engine/connectivity path.
+- Automation/control-plane initialization
+  - Lazy bridge construction is accepted.
+  - Import-time failure risk is reduced.
+- Test entrypoint reliability
+  - Single deterministic repo-root insertion in `tests/conftest.py` is accepted.
+  - Repo-root and parent-cwd test execution is accepted.
+- Test contract updates
+  - Renderer/context wording changes preserve semantic expectations.
+  - `health_check` tests are explicit about failure expectations.
+- OpenClaw / Discord integration
+  - Discord `401` is accepted as a non-blocking optional integration issue.
+
+### Remaining P2 backlog
+
+1. True lazy DB/session initialization
+2. Structured automation bridge constructor-failure response
+3. Real web-worker HTTP recovery integration test
+4. OpenClaw Discord optional/non-blocking health-label clarity
+
 Baseline commit: `ecee558 Close doctrine lifecycle and operator truth gaps`; final proof refreshed after closure-control fixes  
 Audit date: 2026-03-15  
 Audit mode: closure-control pass
