@@ -128,21 +128,14 @@ echo "=== DRIFT CHECK: $PASS passed, $FAIL failed ==="
 
 if [[ $FAIL -gt 0 ]]; then
     # Send Telegram alert with redacted summary
-    local fail_summary
     fail_summary=$(printf '%s; ' "${FAIL_REASONS[@]}" 2>/dev/null || echo "Unknown")
     alert_telegram "Drift check FAILED ($FAIL checks). Issues: ${fail_summary%; }"
     alert_telegram "Run: drift-check.sh for full output. Review ~/.hermes/doctrine/repo/"
 
     # Log to approval log
-    local log_entry
-    log_entry=$(printf '%s' "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
-    log_entry="${log_entry}\" company\":\"Doctrine\",\"decision_category\":\"drift_check\","
-    log_entry="${log_entry}\"requested_action\":\"runtime_config_drift_detection\","
-    log_entry="${log_entry}\"approval_status\":\"fail\",\"approver\":\"hermes_drift_check\","
-    log_entry="${log_entry}\"source_command\":\"drift-check.sh\",\"affected_file_config\":\"openclaw.json SOUL.md\","
-    log_entry="${log_entry}\"before_state\":\"${fail_summary%; }\",\"after_state\":\"alert_sent\","
-    log_entry="${log_entry}\"rollback_reference\":\"review_fail_reasons\",\"commit_hash\":\"\",\"incident_reference\":\"drift_${FAIL}\""
-    echo "{\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"company\":\"Doctrine\",\"decision_category\":\"drift_check\",\"requested_action\":\"runtime_config_drift_detection\",\"approval_status\":\"fail\",\"approver\":\"hermes_drift_check\",\"source_command\":\"drift-check.sh\",\"affected_file_config\":\"openclaw.json, SOUL.md\",\"before_state\":\"${FAIL} checks failed\",\"after_state\":\"telegram_alert_sent\",\"rollback_reference\":\"review_fail_reasons\",\"commit_hash\":\"\",\"incident_reference\":\"drift_${FAIL}\"}" >> /home/saleh/.hermes/doctrine/approval-log.jsonl 2>/dev/null || true
+    TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    LOG_JSON="{\"timestamp\":\"${TS}\",\"company\":\"Doctrine\",\"decision_category\":\"drift_check\",\"requested_action\":\"runtime_config_drift_detection\",\"approval_status\":\"fail\",\"approver\":\"hermes_drift_check\",\"source_command\":\"drift-check.sh\",\"affected_file_config\":\"openclaw.json, SOUL.md\",\"before_state\":\"${FAIL} checks failed\",\"after_state\":\"telegram_alert_sent\",\"rollback_reference\":\"review_fail_reasons\",\"commit_hash\":\"\",\"incident_reference\":\"drift_${FAIL}\"}"
+    echo "${LOG_JSON}" >> /home/saleh/.hermes/doctrine/approval-log.jsonl 2>/dev/null || true
 
     exit 1
 else
